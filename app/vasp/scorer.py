@@ -28,6 +28,14 @@ class ScoredCandidate:
         path_sequence: list,
         source_metadata: Dict[str, Any],
         matched_candidate: MatchedCandidate,
+        entity_role: str = "VASP",
+        match_position: str = "TERMINAL_ENDPOINT",
+        is_terminal_endpoint: bool = True,
+        value_transferred: float = 0.0,
+        value_retention_percent: float = 0.0,
+        temporal_proximity_seconds: float = 0.0,
+        path_convergence_count: int = 1,
+        why_this_vasp: Optional[List[str]] = None,
     ):
         self.candidate_name = candidate_name
         self.endpoint_address = endpoint_address
@@ -44,12 +52,21 @@ class ScoredCandidate:
         self.path_sequence = path_sequence
         self.source_metadata = source_metadata
         self.matched_candidate = matched_candidate
+        self.entity_role = entity_role
+        self.match_position = match_position
+        self.is_terminal_endpoint = is_terminal_endpoint
+        self.value_transferred = value_transferred
+        self.value_retention_percent = value_retention_percent
+        self.temporal_proximity_seconds = temporal_proximity_seconds
+        self.path_convergence_count = path_convergence_count
+        self.why_this_vasp = why_this_vasp or []
 
 
 class VASPScorer:
     """
     Calculates analytical VASP Attribution Confidence Scores (0-100) using
     weighted explainable signals and source quality metrics.
+    Strictly distinguishes terminal endpoints from intermediate associations.
     """
 
     def score_candidate(self, matched: MatchedCandidate) -> ScoredCandidate:
@@ -60,7 +77,7 @@ class VASPScorer:
         # 1. Source Confidence (0.0 to 1.0)
         source_conf = self._calculate_source_confidence(matched.vasp_record)
 
-        # 2. Signal 1: Entity Address Match (30 pts max)
+        # 2. Signal 1: Entity Address Match (30 pts max for terminal; 10 pts for intermediate)
         sig1_score, sig1_reason = self._score_entity_match(matched)
         score_components["entity_address_match"] = sig1_score
         evidence_statements.append(sig1_reason)
@@ -75,7 +92,7 @@ class VASPScorer:
         score_components["endpoint_proximity"] = sig3_score
         evidence_statements.append(sig3_reason)
 
-        # 5. Signal 4: Deposit / Hot Wallet Evidence (15 pts max)
+        # 5. Signal 4: Deposit / Hot Wallet Role Evidence (15 pts max for terminal; 3 pts for intermediate)
         sig4_score, sig4_reason = self._score_wallet_role(matched)
         score_components["wallet_role_evidence"] = sig4_score
         evidence_statements.append(sig4_reason)
@@ -102,6 +119,9 @@ class VASPScorer:
         # Determine confidence band
         confidence_band = self._classify_confidence_band(attribution_confidence)
 
+        # Construct concise, explainable "WHY THIS VASP?" items grounded strictly in trace data
+        why_this_vasp = self._build_why_this_vasp(matched)
+
         source_metadata = {
             "source": matched.vasp_record.source if matched.vasp_record else "Unknown",
             "source_url": matched.vasp_record.source_url if matched.vasp_record else None,
@@ -126,12 +146,74 @@ class VASPScorer:
             path_sequence=matched.path_sequence,
             source_metadata=source_metadata,
             matched_candidate=matched,
+            entity_role=matched.entity_role,
+            match_position=matched.match_position,
+            is_terminal_endpoint=matched.is_terminal_endpoint,
+            value_transferred=matched.value_transferred,
+            value_retention_percent=matched.value_retention_percent,
+            temporal_proximity_seconds=matched.temporal_proximity_seconds,
+            path_convergence_count=matched.path_convergence_count,
+            why_this_vasp=why_this_vasp,
         )
+
+    def _build_why_this_vasp(self, matched: MatchedCandidate) -> List[str]:
+        """Constructs concise, evidence-grounded points answering 'WHY THIS VASP?'."""
+        items: List[str] = []
+
+        # 1. Address match & endpoint status
+        if matched.is_terminal_endpoint:
+            items.append(f"Known VASP-associated address matched at terminal traced endpoint ({matched.candidate_name})")
+        else:
+            items.append(f"Known VASP-associated address matched at intermediate hop (funds exited to downstream wallets)")
+
+        # 2. Match position
+        pos_str = "terminal traced endpoint" if matched.is_terminal_endpoint else "intermediate path node"
+        items.append(f"Match occurs at {pos_str} ({matched.matching_address})")
+
+        # 3. Hop distance
+        items.append(f"{matched.hop_distance} hop(s) distance from suspicious wallet")
+
+        # 4. Value transferred & continuity
+        retention = matched.value_retention_percent
+        if matched.value_transferred > 0:
+            items.append(f"{retention:.1f}% of traced value reaches the endpoint (${matched.value_transferred:,.2f} transferred)")
+        else:
+            items.append(f"{retention:.1f}% of traced value reaches the endpoint")
+
+        # 5. Timing
+        sec = matched.temporal_proximity_seconds
+        if matched.hop_distance == 1 or all(p.hop_count == 1 for p in matched.paths_involved):
+            items.append("Transaction timing is consistent with rapid movement based on observed transaction timestamps (direct 1-hop transfer)")
+        elif sec <= 0:
+            items.append("Transaction timing is consistent with rapid movement based on observed transaction timestamps (same block execution)")
+        elif sec < 5:
+            items.append("Transaction timing is consistent with rapid movement based on observed transaction timestamps (<5s transfer interval)")
+        elif sec <= 60:
+            items.append(f"Transaction timing supports the path (rapid transfer within {sec:.0f} seconds)")
+        elif sec <= 3600:
+            items.append(f"Transaction timing supports the path ({sec/60:.1f} minutes transfer window)")
+        elif sec <= 86400:
+            items.append(f"Transaction timing supports the path ({sec/3600:.1f} hours transfer window)")
+        else:
+            items.append(f"Transaction timing supports the path ({sec/86400:.1f} days transfer window)")
+
+        # 6. Source provenance
+        src_name = matched.vasp_record.source if matched.vasp_record else "Unknown"
+        lvl = matched.vasp_record.source_quality_level if matched.vasp_record else 5
+        items.append(f"Source intelligence has Level {lvl} provenance ({src_name})")
+
+        # 7. Path convergence
+        num_paths = matched.path_convergence_count
+        if num_paths >= 2:
+            items.append(f"{num_paths} traced paths converge on this entity")
+        else:
+            items.append("Single coherent fund flow path directly connects to this endpoint")
+
+        return items
 
     def _calculate_source_confidence(self, record: Optional[VASPRecord]) -> float:
         if not record:
             return 0.0
-        # Source quality level mapping: L1=1.0, L2=0.95, L3=0.85, L4=0.60, L5=0.0
         level_multipliers = {1: 1.0, 2: 0.95, 3: 0.85, 4: 0.60, 5: 0.0}
         mult = level_multipliers.get(record.source_quality_level, 0.0)
         raw_conf = getattr(record, "confidence", 1.0) or 1.0
@@ -140,10 +222,8 @@ class VASPScorer:
     def _score_entity_match(self, matched: MatchedCandidate) -> Tuple[float, str]:
         if matched.is_terminal_endpoint:
             return 30.0, f"Direct terminal endpoint match for known address of {matched.candidate_name} (+30.0 pts)."
-        elif matched.attribution_type in ["KNOWN_DEPOSIT_ENDPOINT", "KNOWN_HOT_WALLET"]:
-            return 25.0, f"Match with known exchange operational endpoint ({matched.attribution_type}) for {matched.candidate_name} (+25.0 pts)."
         else:
-            return 15.0, f"Indirect association on path node with registered entity {matched.candidate_name} (+15.0 pts)."
+            return 10.0, f"Intermediate path association with registered entity {matched.candidate_name}; funds continued downstream (+10.0 pts)."
 
     def _score_source_quality(self, record: Optional[VASPRecord]) -> Tuple[float, str]:
         if not record:
@@ -175,16 +255,17 @@ class VASPScorer:
 
     def _score_wallet_role(self, matched: MatchedCandidate) -> Tuple[float, str]:
         attr_type = matched.attribution_type
-        if attr_type == "KNOWN_DEPOSIT_ENDPOINT":
-            return 15.0, f"Candidate endpoint verified as active user deposit aggregation wallet (+15.0 pts)."
-        elif attr_type == "KNOWN_HOT_WALLET":
-            return 15.0, f"Candidate endpoint verified as main exchange omnibus hot wallet (+15.0 pts)."
-        elif attr_type == "KNOWN_CUSTODIAL_WALLET":
-            return 12.0, f"Candidate endpoint verified as custodial operational exchange wallet (+12.0 pts)."
-        elif matched.is_terminal_endpoint:
-            return 8.0, f"Candidate endpoint is a terminal wallet in the trace flow (+8.0 pts)."
+        if matched.is_terminal_endpoint:
+            if attr_type == "KNOWN_DEPOSIT_ENDPOINT":
+                return 15.0, f"Candidate endpoint verified as active user deposit aggregation wallet (+15.0 pts)."
+            elif attr_type == "KNOWN_HOT_WALLET":
+                return 15.0, f"Candidate endpoint verified as main exchange omnibus hot wallet (+15.0 pts)."
+            elif attr_type == "KNOWN_CUSTODIAL_WALLET":
+                return 12.0, f"Candidate endpoint verified as custodial operational exchange wallet (+12.0 pts)."
+            else:
+                return 10.0, f"Candidate endpoint is a terminal wallet in the trace flow (+10.0 pts)."
         else:
-            return 4.0, f"Candidate address serves as an intermediate path relay (+4.0 pts)."
+            return 3.0, f"Candidate address serves as an intermediate path relay (+3.0 pts)."
 
     def _score_value_continuity(self, matched: MatchedCandidate) -> Tuple[float, str]:
         if not matched.paths_involved:
@@ -207,7 +288,11 @@ class VASPScorer:
             return 3.0, "Standard transfer velocity along path (+3.0 pts)."
 
         min_elapsed = min([p.elapsed_time_seconds for p in matched.paths_involved])
-        if min_elapsed <= 600:  # < 10 mins
+        if matched.hop_distance == 1 or all(p.hop_count == 1 for p in matched.paths_involved):
+            return 5.0, "Direct 1-hop transfer; timing is consistent with rapid movement based on observed transaction timestamps (+5.0 pts)."
+        elif min_elapsed <= 60:
+            return 5.0, "Rapid fund velocity; timing is consistent with rapid movement based on observed transaction timestamps (+5.0 pts)."
+        elif min_elapsed <= 600:  # < 10 mins
             return 5.0, f"Rapid fund velocity (elapsed time {min_elapsed/60:.1f} mins) (+5.0 pts)."
         elif min_elapsed <= 3600:  # < 1 hour
             return 4.0, f"Fast fund velocity (elapsed time {min_elapsed/60:.1f} mins) (+4.0 pts)."
@@ -219,7 +304,7 @@ class VASPScorer:
     def _score_path_convergence(self, matched: MatchedCandidate) -> Tuple[float, str]:
         num_paths = len(matched.paths_involved)
         if num_paths >= 2:
-            return 5.0, f"Path convergence detected: {num_paths} independent flow paths terminate at {matched.candidate_name} (+5.0 pts)."
+            return 5.0, f"Path convergence detected: {num_paths} traced flow paths terminate at {matched.candidate_name} (+5.0 pts)."
         else:
             return 2.5, f"Single path flow identified to {matched.candidate_name} (+2.5 pts)."
 

@@ -10,6 +10,10 @@ from app.vasp.repository import VASPRepository
 logger = logging.getLogger("specter.vasp.matcher")
 
 
+# Standard TRON USDT Contract Address - strictly barred from VASP attribution
+TRON_USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+
+
 class MatchedCandidate:
     """Internal container for an identified VASP candidate endpoint before scoring."""
 
@@ -26,6 +30,13 @@ class MatchedCandidate:
         supporting_wallets: List[str],
         path_sequence: List[str],
         is_terminal_endpoint: bool = False,
+        entity_role: str = "VASP",
+        match_position: str = "TERMINAL_ENDPOINT",
+        value_transferred: float = 0.0,
+        value_retention_percent: float = 0.0,
+        temporal_proximity_seconds: float = 0.0,
+        path_convergence_count: int = 1,
+        incoming_tx_amounts: Optional[Dict[str, float]] = None,
     ):
         self.candidate_name = candidate_name
         self.matching_address = matching_address
@@ -38,12 +49,20 @@ class MatchedCandidate:
         self.supporting_wallets = supporting_wallets
         self.path_sequence = path_sequence
         self.is_terminal_endpoint = is_terminal_endpoint
+        self.entity_role = entity_role
+        self.match_position = match_position
+        self.value_transferred = value_transferred
+        self.value_retention_percent = value_retention_percent
+        self.temporal_proximity_seconds = temporal_proximity_seconds
+        self.path_convergence_count = path_convergence_count
+        self.incoming_tx_amounts = incoming_tx_amounts or {}
 
 
 class VASPMatcher:
     """
     Analyzes multi-hop trace fund flow graphs to discover potential VASP candidate endpoints.
-    Distinguishes between exact terminal endpoints, deposit wallets, hot wallets, and intermediate hops.
+    Strictly distinguishes between actual VASP endpoints, intermediate path associations,
+    and excludes non-VASP entities (e.g. token contracts, token issuers, bridges).
     """
 
     def __init__(self, repository: VASPRepository):
@@ -83,48 +102,120 @@ class VASPMatcher:
                     continue
 
                 clean_addr = addr.strip()
+                clean_addr_upper = clean_addr.upper()
+
+                # CRITICAL: Token contracts must NEVER be treated as VASP candidates
+                if clean_addr_upper == TRON_USDT_CONTRACT.upper():
+                    logger.debug(f"Skipping USDT token contract address {clean_addr} from VASP matching.")
+                    continue
+
                 vasp_record = self.repository.search_entity(clean_addr, trace_result.chain)
+                if not vasp_record:
+                    continue
 
-                if vasp_record:
-                    is_terminal = (clean_addr.upper() == terminal_wallet.strip().upper())
-                    hop_dist = index
+                # Enforce entity role: Must be an attributable VASP (not token contract, issuer, or infra)
+                if hasattr(vasp_record, "is_attributable_vasp") and not vasp_record.is_attributable_vasp:
+                    logger.debug(f"Skipping non-attributable entity {vasp_record.entity_name} ({vasp_record.entity_type}).")
+                    continue
 
-                    # Determine attribution classification based on entity label & path location
-                    attribution_type = self._classify_attribution_type(
-                        vasp_record=vasp_record,
-                        is_terminal=is_terminal,
+                role = (getattr(vasp_record, "entity_role", "VASP") or "VASP").upper()
+                etype = (getattr(vasp_record, "entity_type", "") or "").upper()
+                if role in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "INFRASTRUCTURE") or etype in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "INFRASTRUCTURE"):
+                    continue
+
+                # Distinguish terminal endpoint from intermediate association
+                is_terminal_for_this_path = (clean_addr_upper == terminal_wallet.strip().upper())
+                hop_dist = index
+
+                # Determine attribution classification based on entity label & path location
+                attribution_type = self._classify_attribution_type(
+                    vasp_record=vasp_record,
+                    is_terminal=is_terminal_for_this_path,
+                    hop_distance=hop_dist,
+                )
+                match_pos = "TERMINAL_ENDPOINT" if is_terminal_for_this_path else "INTERMEDIATE_ASSOCIATION"
+
+                # Collect strictly relevant transaction hashes & intermediate wallets leading up to this hop
+                leading_hops = path.hops[:index] if (path.hops and len(path.hops) >= index) else []
+                leading_tx_hashes = [h.tx_hash for h in leading_hops if h.tx_hash]
+                leading_wallets = [w for w in wallet_seq[:index] if w.upper() != clean_addr_upper and w.upper() != starting_wallet_clean]
+
+                # Identify the specific incoming hop transaction that transferred funds into clean_addr
+                incoming_hop = leading_hops[-1] if leading_hops else None
+                incoming_tx_hash = incoming_hop.tx_hash if incoming_hop else (leading_tx_hashes[-1] if leading_tx_hashes else None)
+
+                # Calculate path metrics up to this hop
+                transfer_val = path.final_amount if is_terminal_for_this_path else path.initial_amount
+                if incoming_hop and incoming_hop.amount is not None:
+                    transfer_val = incoming_hop.amount
+
+                val_retention = path.value_retention_percent if is_terminal_for_this_path else (
+                    (transfer_val / path.initial_amount * 100.0) if path.initial_amount > 0 else 50.0
+                )
+                elapsed_sec = path.elapsed_time_seconds
+
+                key = f"{vasp_record.entity_name}:{clean_addr}"
+                incoming_amounts = {incoming_tx_hash: transfer_val} if incoming_tx_hash else {}
+
+                if key not in candidates_map:
+                    candidates_map[key] = MatchedCandidate(
+                        candidate_name=vasp_record.entity_name,
+                        matching_address=clean_addr,
+                        chain=trace_result.chain,
                         hop_distance=hop_dist,
+                        attribution_type=attribution_type,
+                        vasp_record=vasp_record,
+                        paths_involved=[path],
+                        supporting_transactions=list(leading_tx_hashes),
+                        supporting_wallets=list(leading_wallets),
+                        path_sequence=list(wallet_seq[: index + 1]),
+                        is_terminal_endpoint=is_terminal_for_this_path,
+                        entity_role=getattr(vasp_record, "entity_role", "VASP") or "VASP",
+                        match_position=match_pos,
+                        value_transferred=transfer_val,
+                        value_retention_percent=val_retention,
+                        temporal_proximity_seconds=elapsed_sec,
+                        path_convergence_count=1,
+                        incoming_tx_amounts=incoming_amounts,
                     )
-
-                    key = f"{vasp_record.entity_name}:{clean_addr}"
-                    if key not in candidates_map:
-                        candidates_map[key] = MatchedCandidate(
-                            candidate_name=vasp_record.entity_name,
-                            matching_address=clean_addr,
-                            chain=trace_result.chain,
-                            hop_distance=hop_dist,
-                            attribution_type=attribution_type,
+                else:
+                    existing = candidates_map[key]
+                    # If any path terminates at this entity, it is a terminal endpoint for that flow
+                    if is_terminal_for_this_path:
+                        existing.is_terminal_endpoint = True
+                        existing.match_position = "TERMINAL_ENDPOINT"
+                        existing.attribution_type = self._classify_attribution_type(
                             vasp_record=vasp_record,
-                            paths_involved=[path],
-                            supporting_transactions=list(path_tx_hashes),
-                            supporting_wallets=list(path_wallets),
-                            path_sequence=list(wallet_seq[: index + 1]),
-                            is_terminal_endpoint=is_terminal,
+                            is_terminal=True,
+                            hop_distance=min(existing.hop_distance, hop_dist),
                         )
-                    else:
-                        # Merge paths and update hop distance to shortest found
-                        existing = candidates_map[key]
-                        if hop_dist < existing.hop_distance:
-                            existing.hop_distance = hop_dist
-                            existing.path_sequence = list(wallet_seq[: index + 1])
-                        
+
+                    # Update shortest hop distance and path sequence
+                    if hop_dist < existing.hop_distance:
+                        existing.hop_distance = hop_dist
+                        existing.path_sequence = list(wallet_seq[: index + 1])
+
+                    # Deduplicate paths by path_id so duplicate subpaths or cycles are never double-counted
+                    if path.path_id not in [p.path_id for p in existing.paths_involved]:
                         existing.paths_involved.append(path)
-                        for tx in path_tx_hashes:
-                            if tx not in existing.supporting_transactions:
-                                existing.supporting_transactions.append(tx)
-                        for w in path_wallets:
-                            if w not in existing.supporting_wallets and w != clean_addr:
-                                existing.supporting_wallets.append(w)
+                    existing.path_convergence_count = len(existing.paths_involved)
+
+                    # Aggregate value transferred without double-counting incoming transactions
+                    if incoming_tx_hash:
+                        existing.incoming_tx_amounts[incoming_tx_hash] = transfer_val
+                        existing.value_transferred = round(sum(existing.incoming_tx_amounts.values()), 6)
+                    else:
+                        existing.value_transferred = max(existing.value_transferred, transfer_val)
+
+                    existing.value_retention_percent = max(existing.value_retention_percent, val_retention)
+                    existing.temporal_proximity_seconds = min(existing.temporal_proximity_seconds, elapsed_sec)
+
+                    for tx in leading_tx_hashes:
+                        if tx not in existing.supporting_transactions:
+                            existing.supporting_transactions.append(tx)
+                    for w in leading_wallets:
+                        if w not in existing.supporting_wallets and w != clean_addr:
+                            existing.supporting_wallets.append(w)
 
         return list(candidates_map.values())
 
@@ -136,12 +227,13 @@ class VASPMatcher:
     ) -> str:
         """
         Classifies the relationship between the candidate address and the VASP entity.
+        Strictly distinguishes DIRECT / TERMINAL ENDPOINTS from INTERMEDIATE ASSOCIATIONS.
         Rules:
-        - Exact terminal endpoint matching known address -> EXACT_ENDPOINT_MATCH or KNOWN_DEPOSIT_ENDPOINT
-        - Labeled as deposit_wallet -> KNOWN_DEPOSIT_ENDPOINT
-        - Labeled as hot_wallet -> KNOWN_HOT_WALLET
-        - Labeled as custodial_wallet -> KNOWN_CUSTODIAL_WALLET
-        - Intermediate hop with VASP label -> INDIRECT_ASSOCIATION
+        - Terminal endpoint matching known deposit wallet -> KNOWN_DEPOSIT_ENDPOINT
+        - Terminal endpoint matching known hot wallet -> KNOWN_HOT_WALLET
+        - Terminal endpoint matching custodial wallet -> KNOWN_CUSTODIAL_WALLET
+        - Terminal endpoint matching other registered VASP address -> EXACT_ENDPOINT_MATCH
+        - Intermediate hop with VASP label -> INTERMEDIATE_ASSOCIATION (never treated as endpoint)
         """
         label = (vasp_record.label_type or "").lower()
         entity_type = (vasp_record.entity_type or "").upper()
@@ -151,14 +243,11 @@ class VASPMatcher:
                 return "KNOWN_DEPOSIT_ENDPOINT"
             elif "hot" in label or "hot" in entity_type.lower():
                 return "KNOWN_HOT_WALLET"
+            elif "cold" in label or "cold" in entity_type.lower():
+                return "KNOWN_COLD_WALLET"
             elif "custodial" in label or "custodial" in entity_type.lower():
                 return "KNOWN_CUSTODIAL_WALLET"
             else:
                 return "EXACT_ENDPOINT_MATCH"
         else:
-            if "deposit" in label:
-                return "KNOWN_DEPOSIT_ENDPOINT"
-            elif "hot" in label:
-                return "KNOWN_HOT_WALLET"
-            else:
-                return "INDIRECT_ASSOCIATION"
+            return "INTERMEDIATE_ASSOCIATION"

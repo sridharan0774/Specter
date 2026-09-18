@@ -72,25 +72,33 @@ class SahyogAdapter:
             })
 
         # Format VASP attribution for SAHYOG
-        vasp_info = {}
-        if vasp_resp and vasp_resp.candidates:
+        vasp_info = {"status": vasp_resp.status if vasp_resp else "NO_HIGH_CONFIDENCE_VASP_IDENTIFIED"}
+        if vasp_resp and vasp_resp.status == "RESOLVED" and vasp_resp.candidates:
             top_vasp = vasp_resp.candidates[0]
-            vasp_info = {
+            vasp_info.update({
                 "attributed_vasp_name": top_vasp.candidate_name,
+                "entity_role": top_vasp.entity_role,
                 "attribution_type": top_vasp.attribution_type,
                 "confidence_score": top_vasp.attribution_confidence,
                 "matched_wallet": top_vasp.endpoint_address,
+                "match_position": top_vasp.match_position,
                 "confidence_band": top_vasp.confidence_band,
+                "why_this_vasp": getattr(top_vasp, "why_this_vasp", []),
                 "all_candidates": [
                     {
                         "vasp_name": c.candidate_name,
+                        "entity_role": c.entity_role,
                         "attribution_score": c.attribution_confidence,
                         "matched_address": c.endpoint_address,
                         "attribution_type": c.attribution_type,
+                        "match_position": c.match_position,
                     }
                     for c in vasp_resp.candidates
                 ],
-            }
+            })
+        elif vasp_resp:
+            vasp_info["negative_reason"] = vasp_resp.negative_reason
+            vasp_info["candidates_considered_count"] = vasp_resp.candidates_considered_count
 
         # Format findings for SAHYOG
         sahyog_findings = [f.model_dump(mode="json") for f in findings]

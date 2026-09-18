@@ -12,6 +12,7 @@ from app.schemas.vasp import (
     VASPAttributionResponse,
     VASPCandidateScore,
 )
+from app.core.config import settings
 from app.vasp.repository import VASPRepository
 from app.vasp.matcher import VASPMatcher
 from app.vasp.scorer import VASPScorer, SCORING_MODEL_VERSION
@@ -57,28 +58,47 @@ class VASPService:
         # 2. Score each candidate
         scored_candidates = [self.scorer.score_candidate(m) for m in matched_candidates]
 
-        # 3. Sort by attribution confidence descending
-        scored_candidates.sort(key=lambda c: c.attribution_confidence, reverse=True)
+        # 3. Candidate ranking:
+        #    Primary: Terminal endpoints strictly prioritized over intermediate associations
+        #    Secondary: Highest attribution confidence score
+        #    Tertiary: Nearest hop distance (nearest VASP)
+        #    Quaternary: Highest value transferred
+        scored_candidates.sort(
+            key=lambda c: (
+                1 if c.is_terminal_endpoint else 0,
+                c.attribution_confidence,
+                -c.endpoint_hop_distance,
+                c.value_transferred,
+            ),
+            reverse=True,
+        )
 
         # 4. Filter and assign ranks
         attribution_candidates: List[VASPAttributionCandidate] = []
         for rank, c in enumerate(scored_candidates, start=1):
-            ledger = self.evidence_builder.build_evidence_ledger(c)
-            relevance_reasons = [f"✓ {stmt}" if not stmt.startswith("✓") else stmt for stmt in c.evidence_summary]
+            relevance_reasons = [f"✓ {stmt}" if not stmt.startswith("✓") else stmt for stmt in (c.why_this_vasp or c.evidence_summary)]
 
             attribution_candidates.append(
                 VASPAttributionCandidate(
                     rank=rank,
                     candidate_name=c.candidate_name,
+                    entity_role=c.entity_role,
                     endpoint_address=c.endpoint_address,
                     chain=c.chain,
                     endpoint_hop_distance=c.endpoint_hop_distance,
+                    match_position=c.match_position,
+                    is_terminal_endpoint=c.is_terminal_endpoint,
                     attribution_type=c.attribution_type,
                     source_confidence=c.source_confidence,
                     attribution_confidence=c.attribution_confidence,
                     confidence_band=c.confidence_band,
+                    value_transferred=c.value_transferred,
+                    value_retention_percent=c.value_retention_percent,
+                    temporal_proximity_seconds=c.temporal_proximity_seconds,
+                    path_convergence_count=c.path_convergence_count,
                     score_components=c.score_components,
                     evidence_summary=c.evidence_summary,
+                    why_this_vasp=c.why_this_vasp,
                     supporting_transactions=c.supporting_transactions,
                     supporting_wallets=c.supporting_wallets,
                     path_sequence=c.path_sequence,
@@ -87,39 +107,60 @@ class VASPService:
                 )
             )
 
-        # 5. Evaluate overall attribution status & conservative threshold (<40 is INSUFFICIENT)
+        # 5. Evaluate overall attribution status & conservative threshold:
+        #    Must meet high confidence threshold AND be a direct/terminal endpoint!
+        high_conf_threshold = getattr(settings, "VASP_HIGH_CONFIDENCE_THRESHOLD", 70.0)
         top_scored = scored_candidates[0] if scored_candidates else None
         
-        if top_scored and top_scored.attribution_confidence >= 40.0:
+        if top_scored and top_scored.is_terminal_endpoint and top_scored.attribution_confidence >= high_conf_threshold:
             status = "RESOLVED"
+            negative_reason = None
         else:
             status = "NO_HIGH_CONFIDENCE_VASP_IDENTIFIED"
+            if not top_scored:
+                negative_reason = "The traced fund flow did not provide sufficient evidence to associate the endpoint with a known VASP. All traced paths terminated at unclassified addresses."
+            elif not top_scored.is_terminal_endpoint:
+                negative_reason = f"Candidate '{top_scored.candidate_name}' matched only as an intermediate hop along the path, not as a terminal custodial endpoint. Funds exited downstream."
+            else:
+                negative_reason = f"Candidate '{top_scored.candidate_name}' achieved an attribution confidence of {top_scored.attribution_confidence:.1f}%, which is below the required high-confidence threshold of {high_conf_threshold:.0f}%."
 
         explanation = self.evidence_builder.generate_explanation(
             top_candidate=top_scored,
             total_candidates_found=len(scored_candidates),
             starting_wallet=starting_wallet,
+            wallets_traced_count=trace_result.total_wallets_discovered,
+            transactions_traced_count=trace_result.total_transactions_analyzed,
+            threshold=high_conf_threshold,
+            status=status,
         )
 
         attribution_id = str(uuid.uuid4())
         evaluated_at = datetime.now(timezone.utc)
 
-        # 6. Persist attribution records in database
+        # 6. Persist attribution records in database if resolved
         if top_scored and status == "RESOLVED":
             attribution_record = VASPAttribution(
                 attribution_id=attribution_id,
                 case_id=eff_case_id,
                 trace_id=trace_result.trace_id,
                 candidate_name=top_scored.candidate_name,
+                candidate_entity_id=getattr(top_scored, "candidate_entity_id", None),
+                entity_role=top_scored.entity_role,
                 endpoint_address=top_scored.endpoint_address,
                 chain=top_scored.chain,
                 endpoint_hop_distance=top_scored.endpoint_hop_distance,
+                match_position=top_scored.match_position,
+                is_terminal_endpoint=1 if top_scored.is_terminal_endpoint else 0,
+                value_transferred=top_scored.value_transferred,
+                value_retention_percent=top_scored.value_retention_percent,
+                temporal_proximity_seconds=top_scored.temporal_proximity_seconds,
+                path_convergence_count=top_scored.path_convergence_count,
                 attribution_type=top_scored.attribution_type,
                 source_confidence=top_scored.source_confidence,
                 attribution_confidence=top_scored.attribution_confidence,
                 confidence_band=top_scored.confidence_band,
                 score_components=top_scored.score_components,
-                evidence_summary={"statements": top_scored.evidence_summary},
+                evidence_summary={"statements": top_scored.evidence_summary, "why_this_vasp": top_scored.why_this_vasp},
                 supporting_transactions=top_scored.supporting_transactions,
                 supporting_wallets=top_scored.supporting_wallets,
                 scoring_model_version=SCORING_MODEL_VERSION,
@@ -143,13 +184,24 @@ class VASPService:
 
             self.db.commit()
 
+        known_matches = [c.endpoint_address for c in scored_candidates]
+
         return VASPAttributionResponse(
             attribution_id=attribution_id,
             trace_id=trace_result.trace_id,
             case_id=eff_case_id,
             starting_wallet=starting_wallet,
+            target_wallet=starting_wallet,
             chain=trace_result.chain,
+            asset=trace_result.asset,
             status=status,
+            resolution_status=status,
+            has_high_confidence_match=(status == "RESOLVED"),
+            wallets_traced_count=trace_result.total_wallets_discovered,
+            transactions_traced_count=trace_result.total_transactions_analyzed,
+            candidates_considered_count=len(scored_candidates),
+            known_endpoint_matches=known_matches,
+            negative_reason=negative_reason,
             explanation=explanation,
             scoring_model_version=SCORING_MODEL_VERSION,
             evaluated_at=evaluated_at,

@@ -77,19 +77,29 @@ async def run_vasp_resolution():
         print(f"Analytical Explanation:\n  {result.explanation}")
         print("-" * 80)
 
+        if result.negative_reason:
+            print(f"Negative Result Detail   :\n  {result.negative_reason}")
+            print("-" * 80)
+
         if not result.candidates:
             print("No VASP candidate endpoints detected along the trace graph.")
         else:
-            print(f"Ranked VASP Candidate Endpoints ({len(result.candidates)} candidates identified):")
+            print(f"Ranked VASP Candidate Endpoints ({len(result.candidates)} candidates evaluated):")
             for c in result.candidates:
-                print(f"\n  [Rank #{c.rank}] Candidate: {c.candidate_name}")
+                print(f"\n  [Rank #{c.rank}] Candidate: {c.candidate_name} ({c.entity_role})")
                 print(f"    - Endpoint Address    : {c.endpoint_address}")
+                print(f"    - Match Position      : {c.match_position} (Terminal: {c.is_terminal_endpoint})")
                 print(f"    - Hop Distance        : {c.endpoint_hop_distance} hop(s)")
+                print(f"    - Value Transferred   : {c.value_transferred:,.2f} USDT ({c.value_retention_percent:.1f}% retained)")
                 print(f"    - Attribution Type    : {c.attribution_type}")
                 print(f"    - Source Confidence   : {c.source_confidence:.4f} (0.0 - 1.0)")
                 print(f"    - VASP Score          : {c.attribution_confidence:.2f} / 100.0")
                 print(f"    - Confidence Band     : {c.confidence_band}")
                 print(f"    - Source Provenance   : {c.source_metadata.get('source')} (Level {c.source_metadata.get('source_quality_level')})")
+                if c.why_this_vasp:
+                    print("    - WHY THIS VASP (Factual Points):")
+                    for pt in c.why_this_vasp:
+                        print(f"        * {pt}")
                 print("    - Score Components:")
                 for comp_name, comp_val in c.score_components.items():
                     print(f"        * {comp_name}: {comp_val} pts")

@@ -259,6 +259,7 @@ async def test_trace_truncation_limits(db: Session):
     assert result.status == "TRUNCATED"
     assert result.truncated is True
     assert "MAX_TOTAL_TRANSACTIONS hard limit" in result.truncation_reason
+    assert result.total_transactions_analyzed == 10, "Analyzed transactions must strictly respect the hard limit ceiling without overshoot"
 
 
 @pytest.mark.anyio

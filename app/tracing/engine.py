@@ -123,6 +123,14 @@ class TraceEngine:
                 continue
 
             fetched_txs: List[NormalizedTransactionBase] = fetch_res.get("transactions", [])
+
+            # Enforce hard transaction ceiling strictly against batch overshoot
+            remaining_quota = max(0, request.max_total_transactions - total_tx_analyzed)
+            if len(fetched_txs) > remaining_quota:
+                fetched_txs = fetched_txs[:remaining_quota]
+                truncated = True
+                truncation_reason = f"MAX_TOTAL_TRANSACTIONS hard limit ({request.max_total_transactions}) reached"
+
             total_tx_analyzed += len(fetched_txs)
 
             # Update wallet node transaction count

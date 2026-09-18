@@ -193,50 +193,101 @@ class EvidenceBuilder:
             findings.append(fnd)
 
         # 4. VASP Attribution Findings & Evidence
-        if vasp_resp and vasp_resp.candidates:
+        if vasp_resp:
             vasp_src = source_registry.get_source("SRC_SPECTER_VASP_DB")
-            top_candidate = vasp_resp.candidates[0]
             ev_id = f"ev-vasp-{uuid.uuid4().hex[:8]}"
             fnd_id = f"fnd-vasp-{uuid.uuid4().hex[:8]}"
 
-            ev_item = EvidenceGraphItemSchema(
-                evidence_id=ev_id,
-                finding_id=fnd_id,
-                case_id=case_id,
-                evidence_type="VASP_RESOLUTION",
-                finding=f"VASP Attribution candidate resolved: {top_candidate.candidate_name} ({top_candidate.attribution_type}) with score {top_candidate.attribution_confidence:.1f}/100",
-                supporting_tx_hashes=[h for p in trace_result.paths for h in [hop.tx_hash for hop in p.hops]],
-                supporting_addresses=[top_candidate.endpoint_address],
-                supporting_path_ids=[p.path_id for p in trace_result.paths],
-                source_id=vasp_src.source_id if vasp_src else "SRC_SPECTER_VASP_DB",
-                source_name=vasp_src.name if vasp_src else "Specter VASP Intelligence Database",
-                explorer_urls=[f"https://tronscan.org/#/address/{top_candidate.endpoint_address}"],
-                confidence=top_candidate.source_confidence,
-                scoring_factors={
-                    "attribution_score": top_candidate.attribution_confidence,
-                    "matched_address": top_candidate.endpoint_address,
-                    "confidence_band": top_candidate.confidence_band,
-                },
-            )
-            evidence_items.append(ev_item)
+            if vasp_resp.status == "RESOLVED" and vasp_resp.candidates:
+                top_candidate = vasp_resp.candidates[0]
 
-            fnd = FindingSchema(
-                finding_id=fnd_id,
-                case_id=case_id,
-                job_id=job_id,
-                finding_type="VASP_ATTRIBUTION",
-                title=f"VASP Endpoint Attribution: {top_candidate.candidate_name}",
-                description=f"Fund flow terminates at or interacts with known VASP/Exchange entity '{top_candidate.candidate_name}' ({top_candidate.attribution_type}). Matched endpoint address: {top_candidate.endpoint_address}.",
-                severity="INFO",
-                confidence=top_candidate.source_confidence,
-                supporting_evidence_ids=[ev_id],
-                metadata={
-                    "vasp_name": top_candidate.candidate_name,
-                    "attribution_type": top_candidate.attribution_type,
-                    "matched_address": top_candidate.endpoint_address,
-                },
-            )
-            findings.append(fnd)
+                ev_item = EvidenceGraphItemSchema(
+                    evidence_id=ev_id,
+                    finding_id=fnd_id,
+                    case_id=case_id,
+                    evidence_type="VASP_RESOLUTION",
+                    finding=f"Likely VASP Attribution candidate resolved: {top_candidate.candidate_name} ({top_candidate.attribution_type}) with score {top_candidate.attribution_confidence:.1f}/100",
+                    supporting_tx_hashes=[h for p in trace_result.paths for h in [hop.tx_hash for hop in p.hops]],
+                    supporting_addresses=[top_candidate.endpoint_address],
+                    supporting_path_ids=[p.path_id for p in trace_result.paths],
+                    source_id=vasp_src.source_id if vasp_src else "SRC_SPECTER_VASP_DB",
+                    source_name=vasp_src.name if vasp_src else "Specter VASP Intelligence Database",
+                    explorer_urls=[f"https://tronscan.org/#/address/{top_candidate.endpoint_address}"],
+                    confidence=top_candidate.source_confidence,
+                    scoring_factors={
+                        "attribution_score": top_candidate.attribution_confidence,
+                        "matched_address": top_candidate.endpoint_address,
+                        "confidence_band": top_candidate.confidence_band,
+                        "hop_distance": top_candidate.endpoint_hop_distance,
+                        "entity_role": top_candidate.entity_role,
+                        "match_position": top_candidate.match_position,
+                    },
+                )
+                evidence_items.append(ev_item)
+
+                fnd = FindingSchema(
+                    finding_id=fnd_id,
+                    case_id=case_id,
+                    job_id=job_id,
+                    finding_type="VASP_ATTRIBUTION",
+                    title=f"Likely VASP Attribution: {top_candidate.candidate_name}",
+                    description=(
+                        f"Evidence-backed fund flow analysis indicates likely VASP attribution to '{top_candidate.candidate_name}' "
+                        f"({top_candidate.entity_role}, {top_candidate.attribution_type}). Matched endpoint address: {top_candidate.endpoint_address} "
+                        f"at {top_candidate.endpoint_hop_distance}-hop distance with {top_candidate.confidence_band} confidence "
+                        f"(Score: {top_candidate.attribution_confidence:.1f}/100). Does not constitute legal proof of beneficial ownership."
+                    ),
+                    severity="INFO",
+                    confidence=top_candidate.source_confidence,
+                    supporting_evidence_ids=[ev_id],
+                    metadata={
+                        "vasp_name": top_candidate.candidate_name,
+                        "entity_role": top_candidate.entity_role,
+                        "attribution_type": top_candidate.attribution_type,
+                        "matched_address": top_candidate.endpoint_address,
+                        "hop_distance": top_candidate.endpoint_hop_distance,
+                        "why_this_vasp": top_candidate.why_this_vasp,
+                    },
+                )
+                findings.append(fnd)
+            else:
+                # Useful negative result finding
+                ev_item = EvidenceGraphItemSchema(
+                    evidence_id=ev_id,
+                    finding_id=fnd_id,
+                    case_id=case_id,
+                    evidence_type="VASP_RESOLUTION",
+                    finding="No high-confidence VASP identified across traced fund flow endpoints.",
+                    supporting_tx_hashes=[h for p in trace_result.paths for h in [hop.tx_hash for hop in p.hops]],
+                    supporting_addresses=[p.wallet_sequence[-1] for p in trace_result.paths if p.wallet_sequence],
+                    supporting_path_ids=[p.path_id for p in trace_result.paths],
+                    source_id=vasp_src.source_id if vasp_src else "SRC_SPECTER_VASP_DB",
+                    source_name=vasp_src.name if vasp_src else "Specter VASP Intelligence Database",
+                    confidence=1.0,
+                    scoring_factors={"status": vasp_resp.status},
+                )
+                evidence_items.append(ev_item)
+
+                fnd = FindingSchema(
+                    finding_id=fnd_id,
+                    case_id=case_id,
+                    job_id=job_id,
+                    finding_type="VASP_ATTRIBUTION",
+                    title="VASP Attribution: No High-Confidence VASP Identified",
+                    description=(
+                        "The traced fund flow did not provide sufficient evidence to associate the endpoint with a known VASP. "
+                        f"{vasp_resp.negative_reason or ''} This is a valid investigation result."
+                    ),
+                    severity="INFO",
+                    confidence=1.0,
+                    supporting_evidence_ids=[ev_id],
+                    metadata={
+                        "status": vasp_resp.status,
+                        "candidates_considered_count": vasp_resp.candidates_considered_count,
+                        "negative_reason": vasp_resp.negative_reason,
+                    },
+                )
+                findings.append(fnd)
 
         # 5. Save to SQLite Database
         self._persist_to_db(case_id, findings, evidence_items)

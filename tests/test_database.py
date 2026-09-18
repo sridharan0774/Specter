@@ -54,7 +54,7 @@ def test_normalized_transaction_model(db):
 
 def test_vasp_record_model(db):
     vasp = VASPRecord(
-        address="TJCnKsPa7y5okkXvQWBzxaZ2MJK7JBFZ12",
+        address="TMuA6YqfCeX8EhbfYEg5y7S4DqzSJireY9",
         chain="TRON",
         entity_name="Binance Hot Wallet",
         entity_type="VASP",

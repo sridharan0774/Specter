@@ -140,16 +140,24 @@ export interface TraceResultResponse {
 export interface VASPAttributionCandidate {
   rank?: number;
   candidate_name: string;
+  entity_role?: string;
   endpoint_address: string;
   chain?: string;
   attribution_type: string;
+  match_position?: string;
+  is_terminal_endpoint?: boolean;
   confidence_band: string;
   attribution_confidence: number;
   source_confidence: number;
   endpoint_hop_distance: number;
   deposit_tx_count?: number;
+  value_transferred?: number;
+  value_retention_percent?: number;
+  temporal_proximity_seconds?: number;
+  path_convergence_count?: number;
   matched_relevance_reasons?: string[];
   evidence_summary?: string | string[];
+  why_this_vasp?: string[];
   score_components?: Record<string, number>;
   supporting_transactions?: string[];
   supporting_wallets?: string[];
@@ -162,6 +170,7 @@ export interface VASPAttributionResponse {
   case_id?: string;
   trace_id: string;
   starting_wallet: string;
+  target_wallet?: string;
   chain: string;
   asset?: string;
   status?: string;
@@ -169,6 +178,11 @@ export interface VASPAttributionResponse {
   explanation?: string;
   summary_statement?: string;
   has_high_confidence_match: boolean;
+  wallets_traced_count?: number;
+  transactions_traced_count?: number;
+  candidates_considered_count?: number;
+  known_endpoint_matches?: string[];
+  negative_reason?: string;
   candidates: VASPAttributionCandidate[];
   missing_evidence_factors?: string[];
   confidence_explanation?: string;

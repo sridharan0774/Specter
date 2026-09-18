@@ -15,11 +15,12 @@ export const PrimaryResultReveal: React.FC<PrimaryResultRevealProps> = ({
   onNavigateToTab,
 }) => {
   const primaryCandidate = vaspData?.candidates?.[0];
-  const hasVasp = (vaspData?.has_high_confidence_match ?? false) || (primaryCandidate && primaryCandidate.attribution_confidence >= 40);
+  const hasVasp = (vaspData?.has_high_confidence_match ?? false) && (vaspData?.status === 'RESOLVED');
   const confidenceScore = primaryCandidate?.attribution_confidence || summary.primary_vasp_confidence || 0;
 
   const getConfidenceLevel = (score: number) => {
     if (score >= 80) return 'HIGH CONFIDENCE';
+    if (score >= 70) return 'CONFIDENT';
     if (score >= 50) return 'MODERATE CONFIDENCE';
     return 'LOW CONFIDENCE';
   };
@@ -44,7 +45,7 @@ export const PrimaryResultReveal: React.FC<PrimaryResultRevealProps> = ({
           {hasVasp ? (
             <div className="space-y-3">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest font-sans">
-                LIKELY VASP
+                LIKELY VASP ATTRIBUTION
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4">
@@ -63,13 +64,13 @@ export const PrimaryResultReveal: React.FC<PrimaryResultRevealProps> = ({
               </div>
 
               <p className="text-xs text-slate-600 font-sans leading-relaxed max-w-2xl">
-                {vaspData?.summary_statement || 'Fund flow terminates at verified VASP deposit infrastructure.'}
+                {vaspData?.explanation || vaspData?.summary_statement || 'Evidence-backed fund flow analysis indicates likely VASP custodial endpoint attribution.'}
               </p>
             </div>
           ) : (
             <div className="space-y-3">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-widest font-sans">
-                LIKELY VASP
+                VASP ATTRIBUTION
               </div>
               <div className="flex items-center space-x-3 text-amber-800">
                 <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
@@ -78,7 +79,7 @@ export const PrimaryResultReveal: React.FC<PrimaryResultRevealProps> = ({
                 </h1>
               </div>
               <p className="text-xs text-slate-600 font-sans leading-relaxed">
-                Traced fund flows terminate at intermediary or unmapped wallets with less than 40% statistical attribution confidence.
+                {vaspData?.negative_reason || 'The traced fund flow did not provide sufficient evidence to associate the endpoint with a known VASP. This is a valid investigation result.'}
               </p>
             </div>
           )}

@@ -7,6 +7,7 @@ class VASPRecordBase(BaseModel):
     address: str = Field(..., description="Entity on-chain wallet or deposit address")
     chain: str = Field(..., description="Blockchain identifier")
     entity_name: str = Field(..., description="Name of entity/VASP (e.g. Binance, OKX, Huobi)")
+    entity_role: str = Field("VASP", description="Entity classification: VASP, TOKEN_ISSUER, TOKEN_CONTRACT, INFRASTRUCTURE")
     entity_type: str = Field(..., description="Entity category: VASP, exchange, custodial wallet, deposit wallet, hot wallet, mixer, bridge, DeFi service")
     label_type: str = Field(..., description="Label category (e.g. hot_wallet, deposit_address, cold_wallet)")
     source: str = Field(..., description="Intelligence provider/source name")
@@ -32,15 +33,23 @@ class VASPRecordRead(VASPRecordBase):
 class VASPAttributionCandidate(BaseModel):
     rank: int = Field(..., description="Rank of candidate (1 = strongest)")
     candidate_name: str = Field(..., description="Name of candidate VASP or entity")
+    entity_role: str = Field("VASP", description="Entity classification: VASP, TOKEN_ISSUER, TOKEN_CONTRACT, INFRASTRUCTURE")
     endpoint_address: str = Field(..., description="Matching endpoint or intermediate wallet address")
     chain: str = Field("TRON", description="Blockchain network")
     endpoint_hop_distance: int = Field(..., description="Hop distance from suspicious starting wallet")
-    attribution_type: str = Field(..., description="Attribution classification (e.g. KNOWN_DEPOSIT_ENDPOINT, KNOWN_HOT_WALLET)")
+    match_position: str = Field("TERMINAL_ENDPOINT", description="Position in trace: TERMINAL_ENDPOINT or INTERMEDIATE_ASSOCIATION")
+    is_terminal_endpoint: bool = Field(True, description="Whether candidate is a terminal endpoint in the fund flow")
+    attribution_type: str = Field(..., description="Attribution classification (e.g. KNOWN_DEPOSIT_ENDPOINT, KNOWN_HOT_WALLET, INTERMEDIATE_ASSOCIATION)")
     source_confidence: float = Field(..., ge=0.0, le=1.0, description="External intelligence label confidence (0.0 - 1.0)")
     attribution_confidence: float = Field(..., ge=0.0, le=100.0, description="Overall VASP Attribution Confidence Score (0 - 100)")
     confidence_band: str = Field(..., description="Analytical confidence level: HIGH (80-100), MODERATE (60-79), LOW (40-59), INSUFFICIENT (<40)")
+    value_transferred: Optional[float] = Field(None, description="Traced value arriving at candidate endpoint")
+    value_retention_percent: Optional[float] = Field(None, description="Percentage of original value retained at endpoint")
+    temporal_proximity_seconds: Optional[float] = Field(None, description="Elapsed transfer time in seconds from source")
+    path_convergence_count: int = Field(1, description="Number of distinct traced paths converging on this entity")
     score_components: Dict[str, float] = Field(default_factory=dict, description="Component score breakdown")
     evidence_summary: List[str] = Field(default_factory=list, description="Human & machine readable evidence statements")
+    why_this_vasp: List[str] = Field(default_factory=list, description="Concise explainable evidence items answering why this VASP was attributed")
     supporting_transactions: List[str] = Field(default_factory=list, description="Hashes of transactions connecting suspicious wallet to candidate")
     supporting_wallets: List[str] = Field(default_factory=list, description="Intermediary wallet addresses involved in path")
     path_sequence: List[str] = Field(default_factory=list, description="Ordered list of addresses from source to candidate endpoint")
@@ -55,10 +64,17 @@ class VASPAttributionResponse(BaseModel):
     trace_id: str = Field(..., description="Associated multi-hop trace ID")
     case_id: Optional[str] = Field(None, description="Associated investigation case ID")
     starting_wallet: str = Field(..., description="Starting suspicious wallet address")
+    target_wallet: str = Field("", description="Target suspicious wallet address analyzed")
     chain: str = Field("TRON", description="Blockchain network")
+    asset: str = Field("USDT", description="Traced asset")
     status: str = Field(..., description="Attribution status: RESOLVED or NO_HIGH_CONFIDENCE_VASP_IDENTIFIED")
     resolution_status: str = Field("", description="Resolution status string for frontend compatibility")
     has_high_confidence_match: bool = Field(False, description="Whether high confidence VASP match was resolved")
+    wallets_traced_count: int = Field(0, description="Total wallets discovered during trace")
+    transactions_traced_count: int = Field(0, description="Total transactions analyzed during trace")
+    candidates_considered_count: int = Field(0, description="Number of candidate entities considered")
+    known_endpoint_matches: List[str] = Field(default_factory=list, description="Known endpoint addresses matched on trace paths, if any")
+    negative_reason: Optional[str] = Field(None, description="Reason attribution did not reach high confidence")
     explanation: str = Field(..., description="High-level analytical summary explanation")
     scoring_model_version: str = Field("vasp-score-v1", description="Model version for reproducibility")
     evaluated_at: datetime = Field(..., description="Timestamp of attribution evaluation")
@@ -66,12 +82,11 @@ class VASPAttributionResponse(BaseModel):
 
     @model_validator(mode="after")
     def populate_computed_fields(self):
+        if not self.target_wallet:
+            self.target_wallet = self.starting_wallet
         if not self.resolution_status:
             self.resolution_status = self.status
-        self.has_high_confidence_match = (
-            self.status == "RESOLVED" or
-            (len(self.candidates) > 0 and self.candidates[0].attribution_confidence >= 40.0)
-        )
+        self.has_high_confidence_match = (self.status == "RESOLVED")
         return self
 
     model_config = ConfigDict(from_attributes=True)

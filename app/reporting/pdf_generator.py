@@ -268,17 +268,34 @@ class PDFReportGenerator:
 
         # 5. VASP Attribution & Endpoint Resolution
         story.append(Paragraph("5. VIRTUAL ASSET SERVICE PROVIDER (VASP) ATTRIBUTION", section_heading))
-        if vasp_resp and vasp_resp.candidates:
+        if vasp_resp and vasp_resp.status == "RESOLVED" and vasp_resp.candidates:
             top_v = vasp_resp.candidates[0]
             vasp_text = (
-                f"<b>Primary Attributed VASP:</b> {top_v.candidate_name} ({top_v.attribution_type})<br/>"
+                f"<b>Likely Attributed VASP:</b> {top_v.candidate_name} ({top_v.entity_role})<br/>"
                 f"<b>Attribution Score:</b> {top_v.attribution_confidence:.1f}/100 | <b>Confidence Band:</b> {top_v.confidence_band}<br/>"
-                f"<b>Matched Endpoint Address:</b> {top_v.endpoint_address}<br/>"
-                f"<b>Hop Distance:</b> {top_v.endpoint_hop_distance} hop(s)"
+                f"<b>Matched Endpoint Address:</b> {top_v.endpoint_address} ({top_v.match_position})<br/>"
+                f"<b>Hop Distance:</b> {top_v.endpoint_hop_distance} hop(s) | <b>Classification:</b> {top_v.attribution_type}<br/>"
+                f"<b>Note:</b> Evidence-backed analytical attribution based on transfer flow continuity; does not constitute legal proof of beneficial ownership."
             )
             story.append(Paragraph(vasp_text, body_style))
+            if getattr(top_v, "why_this_vasp", None):
+                story.append(Spacer(1, 4))
+                story.append(Paragraph("<b>Why This VASP Match:</b>", body_style))
+                for wtv in top_v.why_this_vasp[:5]:
+                    story.append(Paragraph(f"• {wtv}", body_style))
         else:
-            story.append(Paragraph("No direct VASP endpoint matched in trace graph.", body_style))
+            wallets_cnt = vasp_resp.wallets_traced_count if vasp_resp else len(trace_result.paths)
+            tx_cnt = vasp_resp.transactions_traced_count if vasp_resp else 0
+            cand_cnt = vasp_resp.candidates_considered_count if vasp_resp else 0
+            neg_reason = vasp_resp.negative_reason if (vasp_resp and vasp_resp.negative_reason) else "Traced fund flow endpoints did not match known high-confidence custodial VASP clusters."
+            neg_text = (
+                f"<b>STATUS: NO HIGH-CONFIDENCE VASP IDENTIFIED</b><br/>"
+                f"The traced fund flow did not provide sufficient evidence to associate the endpoint with a known VASP.<br/>"
+                f"<b>Investigation Context:</b> {wallets_cnt} wallets traced | {tx_cnt} transactions analyzed | {cand_cnt} candidate entities evaluated.<br/>"
+                f"<b>Assessment:</b> {neg_reason}<br/>"
+                f"<i>This is a valid investigation result.</i>"
+            )
+            story.append(Paragraph(neg_text, body_style))
 
         story.append(Spacer(1, 8))
 

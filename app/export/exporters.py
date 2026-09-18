@@ -131,15 +131,29 @@ class DataExporter:
             for c in vasp_resp.candidates:
                 vasp_rows.append({
                     "vasp_name": c.candidate_name,
+                    "entity_role": getattr(c, "entity_role", "VASP"),
                     "matched_address": c.endpoint_address,
                     "attribution_type": c.attribution_type,
+                    "match_position": getattr(c, "match_position", "TERMINAL_ENDPOINT"),
+                    "hop_distance": c.endpoint_hop_distance,
                     "label_type": c.confidence_band,
                     "attribution_score": c.attribution_confidence,
                     "confidence": c.source_confidence,
-                    "is_known_exchange": True,
+                    "is_known_exchange": getattr(c, "entity_role", "VASP") == "VASP",
                 })
         with open(vasp_csv_path, "w", newline="", encoding="utf-8") as f:
-            fieldnames = ["vasp_name", "matched_address", "attribution_type", "label_type", "attribution_score", "confidence", "is_known_exchange"]
+            fieldnames = [
+                "vasp_name",
+                "entity_role",
+                "matched_address",
+                "attribution_type",
+                "match_position",
+                "hop_distance",
+                "label_type",
+                "attribution_score",
+                "confidence",
+                "is_known_exchange",
+            ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(vasp_rows)

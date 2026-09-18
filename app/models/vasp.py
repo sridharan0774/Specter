@@ -14,6 +14,7 @@ class VASPRecord(Base, TimestampMixin):
     address = Column(String(128), nullable=False, index=True)
     chain = Column(String(32), nullable=False, index=True)
     entity_name = Column(String(128), nullable=False, index=True)
+    entity_role = Column(String(64), nullable=False, default="VASP", index=True)  # VASP, TOKEN_ISSUER, TOKEN_CONTRACT, INFRASTRUCTURE
     entity_type = Column(String(64), nullable=False)  # VASP, EXCHANGE, CUSTODIAL, DEPOSIT_WALLET, HOT_WALLET, MIXER, BRIDGE, DEFI
     label_type = Column(String(64), nullable=False)  # public_address_label, verified_deposit_label, hot_wallet_label, cluster_label
     source = Column(String(128), nullable=False)  # Research or intelligence provider name
@@ -23,6 +24,27 @@ class VASPRecord(Base, TimestampMixin):
     confidence = Column(Float, nullable=False, default=1.0)  # Source confidence (0.0 - 1.0)
     verified_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
+
+    @property
+    def is_attributable_vasp(self) -> bool:
+        """
+        True ONLY for actual VASP / exchange / custodial services.
+        Explicitly excludes token contracts, token issuers, and general blockchain infrastructure.
+        The USDT token contract (TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t) is strictly barred.
+        """
+        clean_addr = (self.address or "").strip().upper()
+        if clean_addr == "TR7NHQJEKXGTCI8Q8ZY4PL8OTSZGJLJ6T":
+            return False
+
+        role = (getattr(self, "entity_role", None) or "VASP").upper()
+        if role in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "INFRASTRUCTURE"):
+            return False
+
+        etype = (self.entity_type or "").upper()
+        if etype in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "CONTRACT", "INFRASTRUCTURE"):
+            return False
+
+        return role in ("VASP", "EXCHANGE", "CUSTODIAL") or etype in ("VASP", "EXCHANGE", "CUSTODIAL", "DEPOSIT_WALLET", "HOT_WALLET")
 
 
 class VASPAttribution(Base, TimestampMixin):
@@ -35,9 +57,16 @@ class VASPAttribution(Base, TimestampMixin):
 
     candidate_name = Column(String(128), nullable=False, index=True)
     candidate_entity_id = Column(String(64), nullable=True)
+    entity_role = Column(String(64), nullable=False, default="VASP")
     endpoint_address = Column(String(128), nullable=False, index=True)
     chain = Column(String(32), nullable=False, default="TRON")
     endpoint_hop_distance = Column(Integer, nullable=False, default=1)
+    match_position = Column(String(64), nullable=False, default="TERMINAL_ENDPOINT")  # TERMINAL_ENDPOINT or INTERMEDIATE_ASSOCIATION
+    is_terminal_endpoint = Column(Integer, nullable=False, default=1)  # 1 = True, 0 = False
+    value_transferred = Column(Float, nullable=True)
+    value_retention_percent = Column(Float, nullable=True)
+    temporal_proximity_seconds = Column(Float, nullable=True)
+    path_convergence_count = Column(Integer, nullable=False, default=1)
 
     attribution_type = Column(String(64), nullable=False, default="UNRESOLVED")
     source_confidence = Column(Float, nullable=False, default=0.0)  # 0.0 - 1.0

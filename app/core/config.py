@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     
     # Operational configuration
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    VASP_HIGH_CONFIDENCE_THRESHOLD: float = float(os.getenv("VASP_HIGH_CONFIDENCE_THRESHOLD", "70.0"))
     
     model_config = SettingsConfigDict(
         env_file=".env",
