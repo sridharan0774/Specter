@@ -91,3 +91,47 @@ export function formatExactNumber(val: number | string | undefined | null): stri
   if (typeof val === 'string') return val;
   return val.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
+
+/**
+ * Formats duration seconds into human-readable words (Layer 1 / Layer 2 format).
+ * Examples: 45 -> "45 seconds", 720 -> "12 minutes", 9000 -> "2.5 hours", 259200 -> "3 days"
+ */
+export function formatHumanDuration(seconds: number | string | undefined | null): string {
+  if (seconds === undefined || seconds === null || seconds === '') return 'N/A';
+  const secs = parseNumberSafely(seconds);
+  if (secs <= 0) return '0 seconds';
+  if (secs < 60) return `${Math.round(secs)} seconds`;
+  if (secs < 3600) {
+    const mins = Math.round(secs / 60);
+    return `${mins} minute${mins === 1 ? '' : 's'}`;
+  }
+  if (secs < 86400) {
+    const hrs = (secs / 3600).toFixed(1);
+    const cleanHrs = hrs.endsWith('.0') ? hrs.slice(0, -2) : hrs;
+    return `${cleanHrs} hour${cleanHrs === '1' ? '' : 's'}`;
+  }
+  const days = (secs / 86400).toFixed(1);
+  const cleanDays = days.endsWith('.0') ? days.slice(0, -2) : days;
+  return `${cleanDays} day${cleanDays === '1' ? '' : 's'}`;
+}
+
+/**
+ * Maps technical indicator IDs to plain-English Layer 1 human summaries.
+ */
+export function getHumanIndicatorLabel(indicatorId: string, fallbackName?: string): string {
+  const map: Record<string, string> = {
+    RAPID_MOVEMENT: 'Rapid movement detected',
+    HIGH_TRANSACTION_VELOCITY: 'High transfer activity over a short period',
+    MULTI_HOP_FLOW: 'Funds moved through multiple intermediary wallets',
+    FAN_OUT: 'Funds were distributed to multiple wallets',
+    CONSOLIDATION: 'Funds from multiple wallets converged into one wallet',
+    VALUE_CONCENTRATION: 'A large share of traced value was concentrated in a small number of destinations',
+    REPEATED_INTERACTION: 'The same wallets exchanged funds repeatedly',
+    CROSS_CHAIN_MOVEMENT: 'Funds moved between blockchain networks',
+    POTENTIAL_MIXER_PATTERN: 'Transaction structure shows a pattern resembling mixer-like activity',
+    KNOWN_HIGH_RISK_EXPOSURE: 'Observed exposure to a verified high-risk entity',
+  };
+
+  return map[indicatorId.toUpperCase()] || fallbackName || indicatorId.replace(/_/g, ' ');
+}
+

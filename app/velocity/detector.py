@@ -35,6 +35,10 @@ class VelocityMetrics:
         delta_ts: List[float],
         initial_transfer_amount: float = 0.0,
         downstream_activity_amount: float = 0.0,
+        total_observation_period_seconds: float = 0.0,
+        active_burst_window_seconds: Optional[float] = None,
+        burst_transfer_count: int = 0,
+        is_timing_reliable: bool = True,
     ):
         self.transfer_count = transfer_count
         self.total_amount = total_amount
@@ -50,6 +54,10 @@ class VelocityMetrics:
         self.delta_ts = delta_ts
         self.initial_transfer_amount = initial_transfer_amount
         self.downstream_activity_amount = downstream_activity_amount
+        self.total_observation_period_seconds = total_observation_period_seconds
+        self.active_burst_window_seconds = active_burst_window_seconds
+        self.burst_transfer_count = burst_transfer_count
+        self.is_timing_reliable = is_timing_reliable
 
 
 class VelocityDetector:
@@ -91,6 +99,10 @@ class VelocityDetector:
                 delta_ts=[],
                 initial_transfer_amount=0.0,
                 downstream_activity_amount=0.0,
+                total_observation_period_seconds=0.0,
+                active_burst_window_seconds=None,
+                burst_transfer_count=0,
+                is_timing_reliable=False,
             )
 
         total_amount = sum(h.amount for h in unique_hops)
@@ -116,6 +128,10 @@ class VelocityDetector:
 
         # Calculate time gaps (delta_t) only across sequential transfers (>= 2 transfers)
         delta_ts: List[float] = []
+        active_burst_seconds: Optional[float] = None
+        burst_transfer_count: int = 1
+        is_timing_reliable: bool = True
+
         if len(unique_hops) >= 2:
             for i in range(1, len(unique_hops)):
                 gap = (unique_hops[i].timestamp - unique_hops[i - 1].timestamp).total_seconds()
@@ -123,16 +139,47 @@ class VelocityDetector:
 
             start_ts = unique_hops[0].timestamp
             end_ts = unique_hops[-1].timestamp
-            duration_seconds = max(0.0, (end_ts - start_ts).total_seconds())
+            total_obs_seconds = max(0.0, (end_ts - start_ts).total_seconds())
 
             min_delta = round(min(delta_ts), 2) if delta_ts else None
             max_delta = round(max(delta_ts), 2) if delta_ts else None
             avg_delta = round(sum(delta_ts) / len(delta_ts), 2) if delta_ts else None
+
+            # Compute Active Burst Window (clustering transfers with interval <= 1800s)
+            burst_clusters: List[List[TraceHopItem]] = []
+            curr_cluster: List[TraceHopItem] = [unique_hops[0]]
+
+            for i in range(1, len(unique_hops)):
+                gap = (unique_hops[i].timestamp - unique_hops[i - 1].timestamp).total_seconds()
+                if gap <= 1800.0:  # 30 minutes burst threshold
+                    curr_cluster.append(unique_hops[i])
+                else:
+                    burst_clusters.append(curr_cluster)
+                    curr_cluster = [unique_hops[i]]
+            burst_clusters.append(curr_cluster)
+
+            # Find largest burst cluster
+            largest_cluster = max(burst_clusters, key=len)
+            burst_transfer_count = len(largest_cluster)
+
+            if burst_transfer_count >= 2:
+                active_burst_seconds = max(
+                    0.0,
+                    (largest_cluster[-1].timestamp - largest_cluster[0].timestamp).total_seconds(),
+                )
+            else:
+                active_burst_seconds = total_obs_seconds
+
+            # Timing reliability check: if all gaps are 0.0s and transfers are sparse/ambiguous
+            if all(d == 0.0 for d in delta_ts) and total_obs_seconds == 0.0 and len(unique_hops) < 3:
+                is_timing_reliable = False
         else:
-            duration_seconds = 0.0
+            total_obs_seconds = 0.0
             min_delta = None
             max_delta = None
             avg_delta = None
+            active_burst_seconds = None
+            is_timing_reliable = False
 
         max_hops = max([p.hop_count for p in trace_result.paths], default=0)
 
@@ -142,7 +189,7 @@ class VelocityDetector:
         return VelocityMetrics(
             transfer_count=transfer_count,
             total_amount=round(total_amount, 2),
-            duration_seconds=round(duration_seconds, 2),
+            duration_seconds=round(total_obs_seconds, 2),
             minimum_delta_t=min_delta,
             average_delta_t=avg_delta,
             maximum_delta_t=max_delta,
@@ -154,7 +201,12 @@ class VelocityDetector:
             delta_ts=delta_ts,
             initial_transfer_amount=round(initial_transfer_amount, 2),
             downstream_activity_amount=round(downstream_activity_amount, 2),
+            total_observation_period_seconds=round(total_obs_seconds, 2),
+            active_burst_window_seconds=round(active_burst_seconds, 2) if active_burst_seconds is not None else None,
+            burst_transfer_count=burst_transfer_count,
+            is_timing_reliable=is_timing_reliable,
         )
+
 
     def calculate_rolling_windows(
         self, hops: List[TraceHopItem]

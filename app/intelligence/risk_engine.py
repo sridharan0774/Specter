@@ -121,11 +121,11 @@ class ExplainableGraphRiskEngine:
             contrib = 15.0 if min_delta_flt <= 30.0 else 10.0
             ind = RiskIndicatorItem(
                 indicator_id="RAPID_MOVEMENT",
-                indicator_name="Rapid Successive Fund Movement",
+                indicator_name="Rapid movement detected",
                 dimension="TEMPORAL",
                 classification="OBSERVED",
                 detection_rule="Minimum inter-transfer interval delta_t <= 120 seconds",
-                observed_value=f"Minimum transfer interval: {min_delta_flt:.1f}s across {transfer_count} transfers",
+                observed_value=f"{transfer_count} transfers observed with minimum interval of {min_delta_flt:.1f}s",
                 threshold_reference="Threshold: <= 120s",
                 contribution=contrib,
                 supporting_transactions=all_tx_hashes[:3],
@@ -138,11 +138,11 @@ class ExplainableGraphRiskEngine:
             contrib = 10.0
             ind = RiskIndicatorItem(
                 indicator_id="HIGH_TRANSACTION_VELOCITY",
-                indicator_name="High Transaction Velocity Pattern",
+                indicator_name="High transfer activity over a short period",
                 dimension="TEMPORAL",
                 classification="OBSERVED",
                 detection_rule="Observed transfer count >= 4 or calculated velocity score >= 50.0",
-                observed_value=f"Transfer count: {transfer_count}, Velocity score: {velocity_score:.1f}",
+                observed_value=f"{transfer_count} transfers observed across active sequence (Velocity score: {velocity_score:.1f})",
                 threshold_reference="Threshold: >= 4 transfers",
 
                 contribution=contrib,
@@ -160,11 +160,11 @@ class ExplainableGraphRiskEngine:
             contrib = 10.0 if max_hops >= 4 else 7.0
             ind = RiskIndicatorItem(
                 indicator_id="MULTI_HOP_FLOW",
-                indicator_name="Multi-Hop Deep Layering Path",
+                indicator_name="Funds moved through multiple intermediary wallets",
                 dimension="GRAPH_STRUCTURE",
                 classification="OBSERVED",
                 detection_rule="Trace path depth >= 3 hops",
-                observed_value=f"Maximum path depth: {max_hops} hops across {total_paths} paths",
+                observed_value=f"{max_hops} downstream hops observed across {total_paths} trace path(s)",
                 threshold_reference="Threshold: >= 3 hops",
                 contribution=contrib,
                 supporting_transactions=all_tx_hashes[:4],
@@ -177,11 +177,11 @@ class ExplainableGraphRiskEngine:
             contrib = 8.0
             ind = RiskIndicatorItem(
                 indicator_id="FAN_OUT",
-                indicator_name="Fan-Out Transfer Dispersion",
+                indicator_name="Funds were distributed to multiple wallets",
                 dimension="GRAPH_STRUCTURE",
                 classification="OBSERVED",
                 detection_rule="Outbound transfers disperse to >= 4 distinct recipient wallets",
-                observed_value=f"Dispersed to {recipients_count} distinct recipient wallets",
+                observed_value=f"{recipients_count} distinct recipient wallets received outbound transfers",
                 threshold_reference="Threshold: >= 4 recipient wallets",
                 contribution=contrib,
                 supporting_transactions=all_tx_hashes[:4],
@@ -197,7 +197,7 @@ class ExplainableGraphRiskEngine:
             contrib = 8.0
             ind = RiskIndicatorItem(
                 indicator_id="CONSOLIDATION",
-                indicator_name="Fund Flow Consolidation",
+                indicator_name="Funds from multiple wallets converged into one wallet",
                 dimension="GRAPH_STRUCTURE",
                 classification="OBSERVED",
                 detection_rule="Multiple distinct transaction paths converge onto single destination wallet",
@@ -219,11 +219,11 @@ class ExplainableGraphRiskEngine:
             contrib = 10.0 if total_vol >= 100000.0 else 7.0
             ind = RiskIndicatorItem(
                 indicator_id="VALUE_CONCENTRATION",
-                indicator_name="High Value Concentration & Retention",
+                indicator_name="A large share of traced value was concentrated in a small number of destinations",
                 dimension="VALUE_FLOW",
                 classification="OBSERVED",
                 detection_rule="Value retention >= 75% or total transferred volume >= $25,000",
-                observed_value=f"Max value retention: {max_retention:.1f}%, Total volume: ${total_vol:,.2f}",
+                observed_value=f"{max_retention:.1f}% max value retention across paths (total volume: ${total_vol:,.2f})",
                 threshold_reference="Threshold: >= 75% retention or >= $25,000",
                 contribution=contrib,
                 supporting_transactions=all_tx_hashes[:3],
@@ -240,7 +240,7 @@ class ExplainableGraphRiskEngine:
             contrib = 8.0
             ind = RiskIndicatorItem(
                 indicator_id="REPEATED_INTERACTION",
-                indicator_name="Repeated Wallet-Pair Interaction",
+                indicator_name="The same wallets exchanged funds repeatedly",
                 dimension="BEHAVIOURAL",
                 classification="OBSERVED",
                 detection_rule="Multiple distinct transaction records executed between identical wallet pairs",
@@ -262,7 +262,7 @@ class ExplainableGraphRiskEngine:
                 contrib = 12.0
                 ind = RiskIndicatorItem(
                     indicator_id="CROSS_CHAIN_MOVEMENT",
-                    indicator_name="Cross-Chain Bridge Interaction",
+                    indicator_name="Funds moved between blockchain networks",
                     dimension="OBFUSCATION",
                     classification="INFERRED",
                     detection_rule="Observed transaction sequence involves cross-chain bridge or asset swap protocol",
@@ -282,7 +282,7 @@ class ExplainableGraphRiskEngine:
                 contrib = 15.0
                 ind = RiskIndicatorItem(
                     indicator_id="POTENTIAL_MIXER_PATTERN",
-                    indicator_name="Potential Mixer-Like Pattern",
+                    indicator_name="Transaction structure shows a pattern resembling mixer-like activity",
                     dimension="OBFUSCATION",
                     classification="HEURISTIC",
                     detection_rule="Heuristic detection of rapid peeling, equal-value splitting, or obfuscation movement",
@@ -305,7 +305,7 @@ class ExplainableGraphRiskEngine:
                 contrib = 25.0
                 ind = RiskIndicatorItem(
                     indicator_id="KNOWN_HIGH_RISK_EXPOSURE",
-                    indicator_name="Known High-Risk Entity Exposure",
+                    indicator_name="Observed exposure to a verified high-risk entity",
                     dimension="ENTITY_EXPOSURE",
                     classification="INFERRED",
                     detection_rule="Direct or multi-hop exposure to verified high-risk or sanctioned entity",

@@ -2,6 +2,8 @@ import React from 'react';
 import type { RiskIndicatorResponse, RiskIndicatorItem } from '../types/api';
 import { CheckCircle2, ShieldAlert, ExternalLink, Info, AlertTriangle, Activity } from 'lucide-react';
 import { buildExplorerUrl, getExplorerName } from '../utils/explorer';
+import { getHumanIndicatorLabel } from '../utils/formatters';
+
 
 interface RiskBreakdownPanelProps {
   riskData?: RiskIndicatorResponse;
@@ -178,66 +180,101 @@ export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData
                 </div>
 
                 {riskData.indicators && riskData.indicators.length > 0 ? (
-                  <div className="space-y-3">
-                    {riskData.indicators.map((ind: RiskIndicatorItem, idx: number) => (
-                      <div key={idx} className="bg-white p-3.5 rounded-md border border-slate-200 space-y-2 text-xs">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-mono font-bold text-indigo-700 text-sm">
-                              +{ind.contribution.toFixed(1)} pts
-                            </span>
-                            <span className="font-bold text-slate-900">{ind.indicator_name}</span>
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
-                                ind.classification === 'OBSERVED'
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                  : ind.classification === 'HEURISTIC'
-                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
-                              }`}
-                            >
-                              [{ind.classification}]
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                            {ind.dimension}
-                          </span>
-                        </div>
-
-                        <div className="text-slate-600 space-y-1">
-                          <div>
-                            <span className="font-medium text-slate-700">Measured Value: </span>
-                            <span className="font-mono font-semibold text-slate-900">{ind.observed_value}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            Detection Rule: {ind.detection_rule} ({ind.threshold_reference})
-                          </div>
-                        </div>
-
-                        {/* Supporting Transaction Evidence Hashes */}
-                        {ind.supporting_transactions && ind.supporting_transactions.length > 0 && (
-                          <div className="pt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-100 font-mono text-[11px]">
-                            <span className="text-slate-400 font-sans font-medium text-[10px]">SUPPORTING TXS:</span>
-                            {ind.supporting_transactions.map((txHash, hIdx) => (
-                              <a
-                                key={hIdx}
-                                href={buildExplorerUrl(txHash, riskData.chain)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800 underline flex items-center space-x-0.5"
-                                title={`View on ${explorerName}`}
+                  <div className="space-y-3.5">
+                    {riskData.indicators.map((ind: RiskIndicatorItem, idx: number) => {
+                      const humanTitle = getHumanIndicatorLabel(ind.indicator_id, ind.indicator_name);
+                      return (
+                        <div key={idx} className="bg-white p-4 rounded-md border border-slate-200 space-y-2.5 text-xs shadow-2xs">
+                          {/* LAYER 1: HUMAN SUMMARY TITLE */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-mono font-bold text-indigo-700 text-sm bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                +{ind.contribution.toFixed(1)} pts
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-900 font-sans">{humanTitle}</h4>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                                  ind.classification === 'OBSERVED'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : ind.classification === 'HEURISTIC'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                }`}
                               >
-                                <span>{txHash.substring(0, 10)}...</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            ))}
+                                {ind.classification}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-mono font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full uppercase">
+                              {ind.dimension}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          {/* LAYER 2: FACTUAL OBSERVED EVIDENCE */}
+                          <div className="text-slate-700 bg-slate-50/70 p-3 rounded border border-slate-200/80 font-sans space-y-1">
+                            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider font-mono">
+                              OBSERVED EVIDENCE
+                            </div>
+                            <p className="text-xs text-slate-800 font-medium leading-relaxed">
+                              {ind.observed_value}
+                            </p>
+                          </div>
+
+                          {/* LAYER 3: EXPANDABLE TECHNICAL DETAILS */}
+                          <details className="text-[11px] font-mono text-slate-600 pt-1 group">
+                            <summary className="cursor-pointer font-sans text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1 select-none py-1">
+                              <span>Technical Details & Detection Rule</span>
+                              <span className="text-[10px] text-slate-400 font-normal">({ind.indicator_id})</span>
+                            </summary>
+                            <div className="mt-2 p-3 bg-slate-900 text-slate-200 rounded-md space-y-2 border border-slate-800">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                <div>
+                                  <span className="text-slate-400 font-semibold">Rule ID: </span>
+                                  <span className="text-indigo-300 font-bold">{ind.indicator_id}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-400 font-semibold">Classification: </span>
+                                  <span className="text-emerald-300">{ind.classification}</span>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <span className="text-slate-400 font-semibold">Detection Logic: </span>
+                                  <span className="text-slate-300">{ind.detection_rule}</span>
+                                </div>
+                                {ind.threshold_reference && (
+                                  <div className="sm:col-span-2">
+                                    <span className="text-slate-400 font-semibold">Threshold Ref: </span>
+                                    <span className="text-slate-300">{ind.threshold_reference}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Supporting Transaction Evidence Hashes */}
+                              {ind.supporting_transactions && ind.supporting_transactions.length > 0 && (
+                                <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center gap-2">
+                                  <span className="text-slate-400 font-semibold text-[10px]">SUPPORTING TRANSACTION HASHES:</span>
+                                  {ind.supporting_transactions.map((txHash, hIdx) => (
+                                    <a
+                                      key={hIdx}
+                                      href={buildExplorerUrl(txHash, riskData.chain)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-indigo-400 hover:text-indigo-300 underline flex items-center space-x-0.5 font-mono text-[11px]"
+                                      title={`View on ${explorerName}`}
+                                    >
+                                      <span>{txHash.substring(0, 10)}...</span>
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 italic p-3 bg-white rounded border border-slate-200">
+
                     No elevated risk indicators detected in current transaction sequence.
                   </div>
                 )}

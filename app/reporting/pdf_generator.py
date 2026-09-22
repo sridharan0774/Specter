@@ -187,15 +187,24 @@ class PDFReportGenerator:
 
         # Risk Breakdown Table
         risk_comp_data = [
-            [Paragraph("Risk Component", table_header_style), Paragraph("Points Contributed", table_header_style), Paragraph("Description", table_header_style)]
+            [Paragraph("Observed Indicator (Layer 1)", table_header_style), Paragraph("Points", table_header_style), Paragraph("Factual Evidence & Rule Details (Layer 2 & 3)", table_header_style)]
         ]
-        for comp, val in risk_resp.component_contributions.items():
-            risk_comp_data.append([
-                Paragraph(comp.replace("_", " ").title(), table_cell_bold),
-                Paragraph(f"{val:.1f} pts", table_cell_style),
-                Paragraph(f"Contribution of {comp.replace('_', ' ')} to transaction-flow risk score.", table_cell_style),
-            ])
-        comp_table = Table(risk_comp_data, colWidths=[2.2 * inch, 1.2 * inch, 3.6 * inch])
+        if risk_resp and risk_resp.indicators:
+            for ind in risk_resp.indicators:
+                detail_text = f"<b>Observed Fact:</b> {ind.observed_value}<br/><b>Detection Rule:</b> {ind.detection_rule} [{ind.classification}] (ID: <code>{ind.indicator_id}</code>)"
+                risk_comp_data.append([
+                    Paragraph(ind.indicator_name, table_cell_bold),
+                    Paragraph(f"+{ind.contribution:.1f} pts", table_cell_style),
+                    Paragraph(detail_text, table_cell_style),
+                ])
+        elif risk_resp:
+            for comp, val in risk_resp.component_contributions.items():
+                risk_comp_data.append([
+                    Paragraph(comp.replace("_", " ").title(), table_cell_bold),
+                    Paragraph(f"+{val:.1f} pts", table_cell_style),
+                    Paragraph(f"Observed pattern contribution to risk score (Rule: <code>{comp.upper()}</code>).", table_cell_style),
+                ])
+        comp_table = Table(risk_comp_data, colWidths=[2.4 * inch, 0.9 * inch, 3.7 * inch])
         comp_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2B6CB0")),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
@@ -203,6 +212,7 @@ class PDFReportGenerator:
             ("PADDING", (0, 0), (-1, -1), 4),
         ]))
         story.append(comp_table)
+
 
         if risk_resp.false_positive_mitigations:
             story.append(Spacer(1, 4))

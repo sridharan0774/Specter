@@ -41,7 +41,18 @@ class VelocityEvidenceBuilder:
                 f"average delta_t: {avg_delta_str}. Velocity score ({velocity_score:.1f}/100) below threshold."
             )
 
-        duration_str = self._format_duration(metrics.duration_seconds)
+        burst_sec = getattr(metrics, "active_burst_window_seconds", None)
+        total_obs_sec = getattr(metrics, "total_observation_period_seconds", metrics.duration_seconds)
+        burst_count = getattr(metrics, "burst_transfer_count", metrics.transfer_count)
+
+        if burst_sec is not None and burst_sec < total_obs_sec and burst_count >= 2:
+            burst_str = self._format_duration(burst_sec)
+            obs_str = self._format_duration(total_obs_sec)
+            time_window_detail = f"{burst_count} transfers occurred within an active burst window of {burst_str} (total observation span: {obs_str})"
+        else:
+            time_window_detail = f"across an active period of {self._format_duration(total_obs_sec)}"
+
+        duration_str = self._format_duration(total_obs_sec)
         reasons_str = ", ".join(reason_codes) if reason_codes else "RAPID_TRANSFER_SEQUENCE"
 
         initial_amt = getattr(metrics, "initial_transfer_amount", 0.0)
@@ -56,11 +67,12 @@ class VelocityEvidenceBuilder:
 
         return (
             f"HIGH-VELOCITY MOVEMENT DETECTED [{severity} Severity, Score: {velocity_score:.1f}/100]. "
-            f"{amount_detail} across {duration_str} "
-            f"({metrics.unique_recipients} unique recipient(s), {metrics.downstream_hops} downstream hop(s)). "
+            f"{amount_detail} ({time_window_detail}; "
+            f"{metrics.unique_recipients} unique recipient(s), {metrics.downstream_hops} downstream hop(s)). "
             f"Minimum delta_t: {min_delta_str}, average delta_t: {avg_delta_str}. "
             f"Trigger reasons: {reasons_str}."
         )
+
 
     def build_evidence_payload(
         self,
