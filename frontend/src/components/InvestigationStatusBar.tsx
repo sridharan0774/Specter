@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import type { InvestigationSummarySchema, TraceResultResponse, VASPAttributionResponse } from '../types/api';
 import { ShieldCheck, AlertCircle, Copy, Check, ExternalLink, Network, Layers, GitFork } from 'lucide-react';
-import { buildAddressExplorerUrl } from '../utils/explorer';
+import { buildAddressExplorerUrl, getExplorerName } from '../utils/explorer';
 
 interface InvestigationStatusBarProps {
   summary?: InvestigationSummarySchema | null;
   traceData?: TraceResultResponse | null;
   vaspData?: VASPAttributionResponse | null;
   caseId?: string;
+  chain?: string;
   maxHops?: number;
   status?: string;
 }
@@ -17,10 +18,15 @@ export const InvestigationStatusBar: React.FC<InvestigationStatusBarProps> = ({
   traceData,
   vaspData,
   caseId,
+  chain,
   maxHops = 2,
   status = 'READY',
 }) => {
   const [copied, setCopied] = useState(false);
+
+  const effChain = chain || summary?.chain || traceData?.chain || 'TRON';
+  const effAsset = summary?.asset || traceData?.asset || (effChain === 'BITCOIN' ? 'BTC' : 'USDT');
+  const explorerName = getExplorerName(effChain);
 
   const startingWallet = traceData?.starting_wallet || summary?.target_wallet || '';
   const walletsTraced = traceData?.total_wallets_discovered ?? summary?.total_wallets_traced ?? 0;
@@ -95,11 +101,11 @@ export const InvestigationStatusBar: React.FC<InvestigationStatusBarProps> = ({
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
             <a
-              href={buildAddressExplorerUrl(startingWallet)}
+              href={buildAddressExplorerUrl(startingWallet, effChain)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors"
-              title="View on TronScan Explorer"
+              title={`View on ${explorerName}`}
             >
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
@@ -109,9 +115,9 @@ export const InvestigationStatusBar: React.FC<InvestigationStatusBarProps> = ({
         {/* Right: Tracing Metrics (Derived from Backend Only) */}
         <div className="flex items-center space-x-4 text-xs">
           <div className="flex items-center space-x-1 text-slate-600">
-            <span className="font-semibold text-slate-800 font-mono">TRON</span>
+            <span className="font-semibold text-slate-800 font-mono">{effChain}</span>
             <span className="text-slate-400">/</span>
-            <span className="font-semibold text-slate-800 font-mono">USDT</span>
+            <span className="font-semibold text-slate-800 font-mono">{effAsset}</span>
           </div>
 
           <div className="flex items-center space-x-1 text-slate-600">
@@ -177,9 +183,10 @@ export const InvestigationStatusBar: React.FC<InvestigationStatusBarProps> = ({
         </div>
 
         <div className="text-[11px] text-slate-400 font-mono">
-          OPERATIONAL SCOPE: TRON USDT TRC-20
+          OPERATIONAL SCOPE: {effChain} {effAsset}
         </div>
       </div>
     </div>
   );
 };
+

@@ -15,12 +15,13 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react';
-import { buildExplorerUrl, buildAddressExplorerUrl } from '../utils/explorer';
+import { buildExplorerUrl, buildAddressExplorerUrl, getExplorerName } from '../utils/explorer';
 import { formatCurrency, formatCryptoAmount, formatTimeInterval } from '../utils/formatters';
 
 interface SelectedInspectorProps {
   selectedNode: GraphNodeDetail | null;
   selectedHop: TraceHopItem | null;
+  chain?: string;
   onClearSelection: () => void;
   onNavigateToAttribution?: () => void;
   onNavigateToEvidence?: () => void;
@@ -29,6 +30,7 @@ interface SelectedInspectorProps {
 export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
   selectedNode,
   selectedHop,
+  chain,
   onClearSelection,
   onNavigateToAttribution,
   onNavigateToEvidence,
@@ -48,6 +50,9 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
       </div>
     );
   }
+
+  const effChain = chain || 'TRON';
+  const explorerName = getExplorerName(effChain);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -104,11 +109,11 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
                   {truncate(selectedHop.from_address)}
                 </span>
                 <a
-                  href={buildAddressExplorerUrl(selectedHop.from_address)}
+                  href={buildAddressExplorerUrl(selectedHop.from_address, effChain)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-slate-400 hover:text-indigo-600 p-1"
-                  title="View on TronScan"
+                  title={`View on ${explorerName}`}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
@@ -136,11 +141,11 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
                   {truncate(selectedHop.to_address)}
                 </span>
                 <a
-                  href={buildAddressExplorerUrl(selectedHop.to_address)}
+                  href={buildAddressExplorerUrl(selectedHop.to_address, effChain)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-slate-400 hover:text-indigo-600 p-1"
-                  title="View on TronScan"
+                  title={`View on ${explorerName}`}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
@@ -194,12 +199,12 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
           {/* Action Link */}
           <div className="flex justify-end pt-1">
             <a
-              href={buildExplorerUrl(selectedHop.tx_hash, selectedHop.asset, selectedHop.explorer_url)}
+              href={buildExplorerUrl(selectedHop.tx_hash, effChain, selectedHop.explorer_url)}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center space-x-1 text-xs text-indigo-700 hover:text-indigo-900 font-semibold"
             >
-              <span>View On-Chain Transaction on TronScan</span>
+              <span>View On-Chain Transaction on {explorerName}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
@@ -247,11 +252,11 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                   <a
-                    href={buildAddressExplorerUrl(selectedNode.address)}
+                    href={buildAddressExplorerUrl(selectedNode.address, effChain)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-indigo-600 p-0.5"
-                    title="View on TronScan"
+                    title={`View on ${explorerName}`}
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -380,7 +385,7 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
                 <span>SMART CONTRACT INFRASTRUCTURE — NOT A CUSTODIAL VASP</span>
               </div>
               <p className="text-slate-700 leading-relaxed font-sans">
-                Address <strong className="font-mono text-slate-900">{selectedNode.address}</strong> is the Tether USD (USDT) TRC-20 smart contract on the TRON network.
+                Address <strong className="font-mono text-slate-900">{selectedNode.address}</strong> is a smart contract on the {effChain} network.
                 Smart contracts execute programmatic token transfers and do not hold custodial deposits on behalf of account holders.
                 SPECTER strictly isolates contract entities from VASP attribution.
               </p>
@@ -397,17 +402,15 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
                   : 'Terminal leaf of current trace depth. No further outgoing transfers were identified within the configured parameters.'}
               </div>
               <div className="flex items-center space-x-3 pt-1 text-[11px] font-mono text-slate-500">
-                <span>CHAIN: TRON</span>
-                <span>•</span>
-                <span>ASSET: USDT</span>
+                <span>CHAIN: {effChain.toUpperCase()}</span>
                 <span>•</span>
                 <a
-                  href={buildAddressExplorerUrl(selectedNode.address)}
+                  href={buildAddressExplorerUrl(selectedNode.address, effChain)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-indigo-600 hover:underline flex items-center space-x-1"
                 >
-                  <span>Open Address on TronScan</span>
+                  <span>Open Address on {explorerName}</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
               </div>
@@ -418,3 +421,4 @@ export const SelectedInspector: React.FC<SelectedInspectorProps> = ({
     </div>
   );
 };
+

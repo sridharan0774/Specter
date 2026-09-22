@@ -8,6 +8,8 @@ interface InvestigationInputProps {
   jobStatus?: InvestigationJobResponse | null;
   onLoadSample: () => void;
   currentCaseId?: string;
+  currentChain?: string;
+  currentWallet?: string;
 }
 
 const STAGES = [
@@ -33,7 +35,6 @@ const CHAIN_OPTIONS = [
   { id: 'SOLANA', label: 'Solana (Adapter Ready / Provider Required)', status: 'ADAPTER AVAILABLE / PROVIDER REQUIRED', isLive: false, defaultAsset: 'SOL' },
 ];
 
-
 const ADDRESS_REGEXES: Record<string, RegExp> = {
   TRON: /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
   ETHEREUM: /^0x[a-fA-F0-9]{40}$/,
@@ -51,16 +52,41 @@ export const InvestigationInput: React.FC<InvestigationInputProps> = ({
   jobStatus,
   onLoadSample,
   currentCaseId,
+  currentChain,
+  currentWallet,
 }) => {
   const [caseId, setCaseId] = useState(currentCaseId || `CASE-TRON-${new Date().getFullYear()}-001`);
-  const [wallet, setWallet] = useState('TGCCfE3KJiXA2LNiKCmLZ6DT6NdL1zDWPY');
-  const [chain, setChain] = useState('TRON');
-  const [asset, setAsset] = useState('USDT');
+  const [wallet, setWallet] = useState(currentWallet || 'TGCCfE3KJiXA2LNiKCmLZ6DT6NdL1zDWPY');
+  const [chain, setChain] = useState(currentChain || 'TRON');
+  const [asset, setAsset] = useState(currentChain === 'BITCOIN' ? 'BTC' : 'USDT');
   const [maxHops, setMaxHops] = useState(2);
   const [minAmount, setMinAmount] = useState(0.0);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showStageDetails, setShowStageDetails] = useState(false);
   const [description, setDescription] = useState('Multi-Hop Fund Flow & VASP Attribution Investigation');
+
+  React.useEffect(() => {
+    if (currentChain) {
+      setChain(currentChain);
+      const targetInfo = CHAIN_OPTIONS.find((c) => c.id === currentChain);
+      if (targetInfo) {
+        setAsset(targetInfo.defaultAsset);
+      }
+    }
+  }, [currentChain]);
+
+  React.useEffect(() => {
+    if (currentWallet) {
+      setWallet(currentWallet);
+    }
+  }, [currentWallet]);
+
+  React.useEffect(() => {
+    if (currentCaseId) {
+      setCaseId(currentCaseId);
+    }
+  }, [currentCaseId]);
+
 
   // Real-time multi-chain address validation
   const trimmedWallet = wallet.trim();

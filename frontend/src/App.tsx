@@ -46,6 +46,57 @@ export function App() {
   const [selectedHop, setSelectedHop] = useState<TraceHopItem | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNodeDetail | null>(null);
 
+  const currentChain =
+    dataset?.summary?.chain ||
+    dataset?.trace_result?.chain ||
+    jobStatus?.chain ||
+    lastRequest?.chain ||
+    sessionStorage.getItem('specter_active_chain') ||
+    'TRON';
+
+  const currentWallet =
+    dataset?.summary?.target_wallet ||
+    dataset?.trace_result?.starting_wallet ||
+    jobStatus?.target_wallet ||
+    lastRequest?.wallet ||
+    sessionStorage.getItem('specter_active_wallet') ||
+    '';
+
+  // Restore Active Investigation State on Browser Reload
+  useEffect(() => {
+    const savedCaseId = sessionStorage.getItem('specter_active_case_id');
+    if (savedCaseId && !dataset && isLiveMode) {
+      setCaseId(savedCaseId);
+      apiService
+        .getFullInvestigationDataset(savedCaseId)
+        .then((full) => {
+          if (full && full.summary) {
+            setDataset(full);
+            if (full.summary.chain) sessionStorage.setItem('specter_active_chain', full.summary.chain);
+            if (full.summary.target_wallet) sessionStorage.setItem('specter_active_wallet', full.summary.target_wallet);
+            if (full.trace_result?.paths?.[0]?.path_id) {
+              setSelectedPathId(full.trace_result.paths[0].path_id);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('Could not restore saved case dataset on reload:', err);
+        });
+    }
+  }, []);
+
+  // Sync Active State to Session Storage
+  useEffect(() => {
+    if (dataset) {
+      const effChain = dataset.summary?.chain || dataset.trace_result?.chain || 'TRON';
+      const effWallet = dataset.summary?.target_wallet || dataset.trace_result?.starting_wallet || '';
+      const effCaseId = dataset.summary?.case_id || caseId;
+      if (effChain) sessionStorage.setItem('specter_active_chain', effChain);
+      if (effWallet) sessionStorage.setItem('specter_active_wallet', effWallet);
+      if (effCaseId) sessionStorage.setItem('specter_active_case_id', effCaseId);
+    }
+  }, [dataset, caseId]);
+
   // Check Backend Health on Mount
   useEffect(() => {
     apiService
@@ -61,6 +112,7 @@ export function App() {
         setHealthStatus('offline');
       });
   }, []);
+
 
   // Handle Mode Switch
   const handleToggleMode = (live: boolean) => {
@@ -307,6 +359,8 @@ export function App() {
               jobStatus={jobStatus}
               onLoadSample={handleLoadSample}
               currentCaseId={caseId}
+              currentChain={currentChain}
+              currentWallet={currentWallet}
             />
 
             {/* STEP 2: Compact Investigation Summary Status Bar */}
@@ -315,6 +369,7 @@ export function App() {
               traceData={dataset?.trace_result}
               vaspData={dataset?.vasp_attribution}
               caseId={caseId || jobStatus?.case_id}
+              chain={currentChain}
               maxHops={lastRequest?.max_hops || 2}
               status={jobStatus?.status || (dataset ? 'COMPLETED' : 'READY')}
             />
@@ -339,6 +394,7 @@ export function App() {
             <SelectedInspector
               selectedNode={selectedNode}
               selectedHop={selectedHop}
+              chain={currentChain}
               onClearSelection={() => {
                 setSelectedNode(null);
                 setSelectedHop(null);
@@ -352,6 +408,7 @@ export function App() {
                 if (el) el.scrollIntoView({ behavior: 'smooth' });
               }}
             />
+
 
             {/* STEP 5: VASP Attribution Resolution Section */}
             {dataset?.vasp_attribution && (
@@ -539,11 +596,13 @@ export function App() {
         hop={selectedHop}
         nodeAddress={selectedNode?.address}
         nodeRole={selectedNode?.role}
+        chain={currentChain}
         onClose={() => {
           setSelectedHop(null);
           setSelectedNode(null);
         }}
       />
+
 
       {/* Footer */}
       <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500 font-mono">

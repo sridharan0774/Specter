@@ -151,3 +151,53 @@ def test_bitcoin_end_to_end_investigation_endpoint():
     assert inv_data["status"] == "COMPLETED"
     assert inv_data["chain"] == "BITCOIN"
     assert inv_data["target_wallet"] == "bc1qyje4lr8qkqy83jaaw625ez3u58e7wyt9tw9y7x"
+
+
+def test_chain_explorer_url_isolation_and_case_restoration():
+    from app.blockchain.adapters.tron import TronAdapter
+
+    btc_adapter = BitcoinAdapter()
+    tron_adapter = TronAdapter()
+
+    # 1. Bitcoin transaction & address explorer URLs
+    btc_tx_url = btc_adapter.get_explorer_url("f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16")
+    btc_addr_url = btc_adapter.get_address_explorer_url("bc1qyje4lr8qkqy83jaaw625ez3u58e7wyt9tw9y7x")
+    assert btc_tx_url == "https://mempool.space/tx/f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16"
+    assert btc_addr_url == "https://mempool.space/address/bc1qyje4lr8qkqy83jaaw625ez3u58e7wyt9tw9y7x"
+    assert "tronscan.org" not in btc_tx_url
+    assert "tronscan.org" not in btc_addr_url
+
+    # 2. TRON transaction explorer URL remains TronScan
+    tron_tx_url = tron_adapter.get_explorer_url("0x1234567890abcdef")
+    assert "tronscan.org" in tron_tx_url
+
+    # 3. Investigation dataset chain restoration verification
+    client = TestClient(app)
+    c_res = client.post("/api/v1/cases", json={
+        "reported_wallet": "bc1qyje4lr8qkqy83jaaw625ez3u58e7wyt9tw9y7x",
+        "chain": "BITCOIN",
+        "asset": "BTC",
+        "investigator_id": "INV-CHAIN-RESTORE",
+        "description": "Chain Restoration & Isolation Test"
+    })
+    cid = c_res.json()["case_id"]
+    client.post(f"/api/v1/cases/{cid}/investigate", json={
+        "wallet": "bc1qyje4lr8qkqy83jaaw625ez3u58e7wyt9tw9y7x",
+        "chain": "BITCOIN",
+        "asset": "BTC",
+        "max_hops": 2
+    })
+
+    # Fetch full dataset
+    ds_res = client.get(f"/api/v1/cases/{cid}/dataset")
+    assert ds_res.status_code == 200
+    ds = ds_res.json()
+
+    assert ds["summary"]["chain"] == "BITCOIN"
+    assert ds["trace_result"]["chain"] == "BITCOIN"
+
+    # Verify evidence items do not contain wrong-chain tronscan URLs for Bitcoin
+    for ev in ds.get("evidence", []):
+        for u in ev.get("explorer_urls", []):
+            assert "tronscan.org" not in u
+

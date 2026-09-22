@@ -101,6 +101,10 @@ class EvidenceBuilder:
 
         # 2. Velocity Movement Alerts Findings & Evidence
         vel_src = source_registry.get_source("SRC_SPECTER_VELOCITY_ENGINE")
+        chain_name = trace_result.chain if trace_result else "TRON"
+        from app.blockchain.registry import ChainRegistry
+        adapter = ChainRegistry.get_adapter(chain_name)
+
         if velocity_resp.alerts:
             for alert in velocity_resp.alerts:
                 ev_id = f"ev-vel-{uuid.uuid4().hex[:8]}"
@@ -118,7 +122,7 @@ class EvidenceBuilder:
                     source_id=vel_src.source_id if vel_src else "SRC_SPECTER_VELOCITY_ENGINE",
                     source_name=vel_src.name if vel_src else "Specter High-Velocity Movement Engine v1.0",
                     explorer_urls=[
-                        f"https://tronscan.org/#/transaction/{h}" for h in alert.supporting_transactions
+                        adapter.get_explorer_url(h) for h in alert.supporting_transactions
                     ],
                     confidence=0.92,
                     scoring_factors={
@@ -168,7 +172,7 @@ class EvidenceBuilder:
                 source_id=typ_src.source_id if typ_src else "SRC_SPECTER_TYPOLOGY_ENGINE",
                 source_name=typ_src.name if typ_src else "Specter Transaction Typology Engine v1.0",
                 explorer_urls=[
-                    f"https://tronscan.org/#/transaction/{h}" for h in typ.supporting_transactions
+                    adapter.get_explorer_url(h) for h in typ.supporting_transactions
                 ],
                 confidence=typ.confidence,
                 scoring_factors=typ.metrics,
@@ -212,7 +216,8 @@ class EvidenceBuilder:
                     supporting_path_ids=[p.path_id for p in trace_result.paths],
                     source_id=vasp_src.source_id if vasp_src else "SRC_SPECTER_VASP_DB",
                     source_name=vasp_src.name if vasp_src else "Specter VASP Intelligence Database",
-                    explorer_urls=[f"https://tronscan.org/#/address/{top_candidate.endpoint_address}"],
+                    explorer_urls=[adapter.get_address_explorer_url(top_candidate.endpoint_address)],
+
                     confidence=top_candidate.source_confidence,
                     scoring_factors={
                         "attribution_score": top_candidate.attribution_confidence,

@@ -1,13 +1,14 @@
 import React from 'react';
 import type { TraceHopItem } from '../types/api';
 import { X, ExternalLink, ArrowRight, Layers } from 'lucide-react';
-import { buildExplorerUrl, buildAddressExplorerUrl } from '../utils/explorer';
+import { buildExplorerUrl, buildAddressExplorerUrl, getExplorerName } from '../utils/explorer';
 import { formatCryptoAmount, formatTimeInterval, formatExactNumber } from '../utils/formatters';
 
 interface TransactionDrawerProps {
   hop: TraceHopItem | null;
   nodeAddress?: string | null;
   nodeRole?: string | null;
+  chain?: string;
   onClose: () => void;
 }
 
@@ -15,14 +16,18 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
   hop,
   nodeAddress,
   nodeRole,
+  chain,
   onClose,
 }) => {
   if (!hop && !nodeAddress) return null;
 
+  const effChain = chain || 'TRON';
+  const explorerName = getExplorerName(effChain);
+
   const explorerUrl = hop
-    ? buildExplorerUrl(hop.tx_hash, hop.asset, hop.explorer_url)
+    ? buildExplorerUrl(hop.tx_hash, effChain, hop.explorer_url)
     : nodeAddress
-    ? buildAddressExplorerUrl(nodeAddress)
+    ? buildAddressExplorerUrl(nodeAddress, effChain)
     : '#';
 
   return (
@@ -114,7 +119,7 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
                   rel="noreferrer"
                   className="flex items-center justify-between p-3 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors font-mono font-semibold"
                 >
-                  <span>VIEW ON TRONSCAN EXPLORER</span>
+                  <span>VIEW ON {explorerName.toUpperCase()} EXPLORER</span>
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
@@ -136,7 +141,7 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
 
                 <div className="bg-white p-3 rounded border border-slate-200">
                   <div className="text-[10px] font-sans text-slate-500 font-medium">NETWORK</div>
-                  <div className="text-xs font-bold text-slate-800">TRON MAINNET</div>
+                  <div className="text-xs font-bold text-slate-800">{effChain.toUpperCase()}</div>
                 </div>
               </div>
 
@@ -158,13 +163,14 @@ export const TransactionDrawer: React.FC<TransactionDrawerProps> = ({
                   rel="noreferrer"
                   className="flex items-center justify-between p-3 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors font-mono font-semibold"
                 >
-                  <span>INSPECT WALLET ON TRONSCAN</span>
+                  <span>INSPECT WALLET ON {explorerName.toUpperCase()}</span>
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
             </>
           ) : null}
         </div>
+
 
         {/* Drawer Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end">
