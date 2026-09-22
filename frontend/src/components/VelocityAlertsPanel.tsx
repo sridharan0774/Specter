@@ -88,30 +88,37 @@ export const VelocityAlertsPanel: React.FC<VelocityAlertsPanelProps> = ({ veloci
               </div>
 
               {/* Investigator Key Metrics */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-sans pt-1">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs font-sans pt-1">
                 <div className="bg-white p-2.5 rounded-md border border-slate-200">
                   <div className="text-[11px] font-medium text-slate-500 font-sans">Transfers</div>
                   <div className="text-sm font-bold text-slate-900 font-mono tabular-nums">{alert.transfer_count} Transfers</div>
                 </div>
 
                 <div className="bg-white p-2.5 rounded-md border border-slate-200">
-                  <div className="text-[11px] font-medium text-slate-500 font-sans">Total Moved</div>
+                  <div className="text-[11px] font-medium text-slate-500 font-sans">Initial Transfer</div>
                   <div className="text-sm font-bold text-slate-900 font-mono tabular-nums">
-                    {formatCurrency(alert.total_amount)}
+                    {formatCurrency(alert.initial_transfer_amount ?? alert.total_amount)}
+                  </div>
+                </div>
+
+                <div className="bg-white p-2.5 rounded-md border border-slate-200">
+                  <div className="text-[11px] font-medium text-slate-500 font-sans">Downstream Activity</div>
+                  <div className="text-sm font-bold text-slate-700 font-mono tabular-nums">
+                    {formatCurrency(alert.downstream_activity_amount ?? 0)}
                   </div>
                 </div>
 
                 <div className="bg-white p-2.5 rounded-md border border-slate-200">
                   <div className="text-[11px] font-medium text-slate-500 font-sans">Fastest Transfer Gap</div>
                   <div className="text-sm font-bold text-amber-800 font-mono tabular-nums">
-                    {formatTimeInterval(alert.minimum_delta_t)}
+                    {alert.minimum_delta_t != null ? formatTimeInterval(alert.minimum_delta_t) : 'N/A (single transfer)'}
                   </div>
                 </div>
 
                 <div className="bg-white p-2.5 rounded-md border border-slate-200">
                   <div className="text-[11px] font-medium text-slate-500 font-sans">Average Transfer Gap</div>
                   <div className="text-sm font-bold text-slate-800 font-mono tabular-nums">
-                    {formatTimeInterval(alert.average_delta_t)}
+                    {alert.average_delta_t != null ? formatTimeInterval(alert.average_delta_t) : 'N/A'}
                   </div>
                 </div>
               </div>
@@ -128,14 +135,26 @@ export const VelocityAlertsPanel: React.FC<VelocityAlertsPanelProps> = ({ veloci
 
                 {isExpanded && (
                   <div className="mt-3 bg-white p-4 rounded-md border border-slate-200 space-y-3 text-xs text-slate-700 font-sans">
-                    <div className="grid grid-cols-2 gap-4 font-mono">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono">
+                      <div>
+                        <span className="text-slate-500 text-[10px] block font-sans">INITIAL OBSERVED TRANSFER:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(alert.initial_transfer_amount ?? alert.total_amount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 text-[10px] block font-sans">DOWNSTREAM OBSERVED ACTIVITY:</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(alert.downstream_activity_amount ?? 0)}</span>
+                      </div>
                       <div>
                         <span className="text-slate-500 text-[10px] block font-sans">EXACT MINIMUM Δt:</span>
-                        <span className="font-bold text-slate-900">{alert.minimum_delta_t} seconds</span>
+                        <span className="font-bold text-slate-900">
+                          {alert.minimum_delta_t != null ? `${alert.minimum_delta_t} seconds` : 'Unavailable (single transfer)'}
+                        </span>
                       </div>
                       <div>
                         <span className="text-slate-500 text-[10px] block font-sans">EXACT AVERAGE Δt:</span>
-                        <span className="font-bold text-slate-900">{alert.average_delta_t} seconds</span>
+                        <span className="font-bold text-slate-900">
+                          {alert.average_delta_t != null ? `${alert.average_delta_t} seconds` : 'Unavailable (single transfer)'}
+                        </span>
                       </div>
                     </div>
 

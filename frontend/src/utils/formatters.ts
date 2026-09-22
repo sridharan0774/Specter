@@ -70,8 +70,9 @@ export function formatCryptoAmount(val: number | string | undefined | null, asse
  * Example: 8 -> "8s", 125 -> "2m 5s", 4200 -> "1.2h"
  */
 export function formatTimeInterval(seconds: number | string | undefined | null): string {
+  if (seconds === undefined || seconds === null || seconds === '') return 'N/A';
   const secs = parseNumberSafely(seconds);
-  if (secs <= 0) return 'Immediate';
+  if (secs <= 0) return '0s';
   if (secs < 60) return `${Math.round(secs)}s`;
   if (secs < 3600) {
     const mins = Math.floor(secs / 60);

@@ -282,6 +282,79 @@ def test_investigation_api_endpoints(client: TestClient, db: Session, sample_inv
         assert resp9.status_code == 200
         assert resp9.headers["content-type"] == "application/pdf"
 
+        # 10. GET /api/v1/cases/{case_id}/dataset (New Phase A endpoint)
+        resp10 = client.get(f"/api/v1/cases/{case_id}/dataset")
+        assert resp10.status_code == 200
+        data10 = resp10.json()
+        assert "summary" in data10
+        assert "trace_result" in data10
+        assert "vasp_attribution" in data10
+        assert "evidence" in data10
+        assert "findings" in data10
+
+    finally:
+        if os.path.exists(export_dir):
+            shutil.rmtree(export_dir, ignore_errors=True)
+
+
+def test_investigation_wallet_validation(client: TestClient):
+    """Test that invalid TRON target wallets are properly validated and rejected."""
+    # 1. Address does not start with 'T'
+    resp = client.post(
+        "/api/v1/cases/case-val-001/investigate",
+        json={
+            "wallet": "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
+            "chain": "TRON",
+            "asset": "USDT",
+        },
+    )
+    assert resp.status_code == 400
+    assert "TRON" in resp.json()["detail"]
+
+    # 2. Address too short
+    resp2 = client.post(
+        "/api/v1/cases/case-val-002/investigate",
+        json={
+            "wallet": "T123",
+            "chain": "TRON",
+            "asset": "USDT",
+        },
+    )
+    assert resp2.status_code == 400
+    assert "too short" in resp2.json()["detail"].lower()
+
+
+def test_investigation_case_custom_parameters(client: TestClient, db: Session, sample_investigation_setup):
+    """Test investigation execution with custom case ID and specific depth parameters."""
+    case_id, target_wallet = sample_investigation_setup
+    custom_case_id = f"{case_id}-custom-depth"
+    export_dir = f"exports/{custom_case_id}"
+
+    try:
+        req_data = {
+            "wallet": target_wallet,
+            "chain": "TRON",
+            "asset": "USDT",
+            "max_hops": 3,
+            "min_transfer_amount": 50.0,
+            "investigator_id": "INV-LEAD-007",
+            "description": "Targeted deep trace investigation",
+        }
+        resp = client.post(f"/api/v1/cases/{custom_case_id}/investigate", json=req_data)
+        assert resp.status_code == 200
+        job_data = resp.json()
+        assert job_data["status"] == "COMPLETED"
+        assert job_data["case_id"] == custom_case_id
+        assert job_data["parameters_snapshot"]["max_hops"] == 3
+        assert job_data["parameters_snapshot"]["min_transfer_amount"] == 50.0
+
+        # Verify dataset retrieval
+        resp_dataset = client.get(f"/api/v1/cases/{custom_case_id}/dataset")
+        assert resp_dataset.status_code == 200
+        dataset = resp_dataset.json()
+        assert dataset["summary"]["case_id"] == custom_case_id
+        assert dataset["summary"]["target_wallet"] == target_wallet
+
     finally:
         if os.path.exists(export_dir):
             shutil.rmtree(export_dir, ignore_errors=True)

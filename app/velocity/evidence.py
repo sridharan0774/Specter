@@ -19,21 +19,46 @@ class VelocityEvidenceBuilder:
         reason_codes: List[str],
     ) -> str:
         """Formulate a clear human and machine readable summary statement."""
+        if metrics.minimum_delta_t is not None:
+            min_delta_str = f"{metrics.minimum_delta_t:.1f}s"
+        else:
+            min_delta_str = "N/A (insufficient sequential transfers)"
+
+        if metrics.average_delta_t is not None:
+            avg_delta_str = f"{metrics.average_delta_t:.1f}s"
+        else:
+            avg_delta_str = "N/A"
+
         if velocity_score < 40.0 or metrics.transfer_count <= 1:
+            if metrics.transfer_count <= 1:
+                timing_context = "single transfer"
+            else:
+                timing_context = f"{metrics.duration_seconds:.1f}s duration"
+
             return (
                 f"NO HIGH-VELOCITY PATTERN DETECTED. Analyzed {metrics.transfer_count} transfer(s) "
-                f"across {metrics.duration_seconds:.1f}s duration. Minimum delta_t: {metrics.minimum_delta_t:.1f}s, "
-                f"average delta_t: {metrics.average_delta_t:.1f}s. Velocity score ({velocity_score:.1f}/100) below threshold."
+                f"({timing_context}). Minimum delta_t: {min_delta_str}, "
+                f"average delta_t: {avg_delta_str}. Velocity score ({velocity_score:.1f}/100) below threshold."
             )
 
         duration_str = self._format_duration(metrics.duration_seconds)
         reasons_str = ", ".join(reason_codes) if reason_codes else "RAPID_TRANSFER_SEQUENCE"
 
+        initial_amt = getattr(metrics, "initial_transfer_amount", 0.0)
+        downstream_amt = getattr(metrics, "downstream_activity_amount", 0.0)
+        if downstream_amt > 0:
+            amount_detail = (
+                f"INITIAL OBSERVED TRANSFER: ${initial_amt:,.2f} USDT, "
+                f"DOWNSTREAM OBSERVED ACTIVITY: ${downstream_amt:,.2f} USDT across {metrics.transfer_count} transfers"
+            )
+        else:
+            amount_detail = f"Observed {metrics.transfer_count} transfers moving ${metrics.total_amount:,.2f} USDT"
+
         return (
             f"HIGH-VELOCITY MOVEMENT DETECTED [{severity} Severity, Score: {velocity_score:.1f}/100]. "
-            f"Observed {metrics.transfer_count} transfers moving ${metrics.total_amount:,.2f} USDT across {duration_str} "
+            f"{amount_detail} across {duration_str} "
             f"({metrics.unique_recipients} unique recipient(s), {metrics.downstream_hops} downstream hop(s)). "
-            f"Minimum delta_t: {metrics.minimum_delta_t:.1f}s, average delta_t: {metrics.average_delta_t:.1f}s. "
+            f"Minimum delta_t: {min_delta_str}, average delta_t: {avg_delta_str}. "
             f"Trigger reasons: {reasons_str}."
         )
 

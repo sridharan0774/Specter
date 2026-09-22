@@ -41,7 +41,9 @@ class VelocityScorer:
 
         # 2. Minimum Delta T Factor (25 pts max)
         # Shortest gap < 30s = 25 pts, < 120s = 18 pts, < 300s = 12 pts, < 600s = 5 pts
-        if metrics.minimum_delta_t <= 30.0:
+        if metrics.minimum_delta_t is None:
+            min_delta_score = 0.0
+        elif metrics.minimum_delta_t <= 30.0:
             min_delta_score = 25.0
         elif metrics.minimum_delta_t <= 120.0:
             min_delta_score = 18.0
@@ -57,7 +59,9 @@ class VelocityScorer:
             reason_codes.append("RAPID_SUCCESSIVE_TRANSFERS")
 
         # 3. Average Delta T Factor (20 pts max)
-        if metrics.average_delta_t <= 60.0:
+        if metrics.average_delta_t is None:
+            avg_delta_score = 0.0
+        elif metrics.average_delta_t <= 60.0:
             avg_delta_score = 20.0
         elif metrics.average_delta_t <= 300.0:
             avg_delta_score = 15.0

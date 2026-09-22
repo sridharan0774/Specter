@@ -25,7 +25,9 @@ from app.schemas.typology import TypologyAnalysisResponse
 from app.schemas.risk import RiskIndicatorResponse
 from app.schemas.vasp import VASPAttributionResponse
 
+from app.blockchain.registry import ChainRegistry
 from app.tracing.engine import TraceEngine
+
 from app.velocity.service import VelocityService
 from app.typologies.service import TypologyService
 from app.risk.service import RiskService
@@ -122,8 +124,9 @@ class InvestigationOrchestrator:
             clean_wallet = request.wallet.strip() if request.wallet else ""
             if not clean_wallet or len(clean_wallet) < 10:
                 raise ValueError(f"Invalid target wallet address '{request.wallet}'. Address is empty or too short.")
-            if request.chain.upper() == "TRON" and not clean_wallet.startswith("T"):
-                raise ValueError(f"Invalid TRON target wallet address '{request.wallet}'. TRON addresses must start with 'T'.")
+            if not ChainRegistry.validate_address_for_chain(request.chain, clean_wallet):
+                raise ValueError(f"Invalid {request.chain} target wallet address '{request.wallet}'. Address syntax check failed.")
+
             stage_timings["VALIDATING"] = round(time.time() - t_stage, 3)
 
             # Stage 2: INGESTING (15%)

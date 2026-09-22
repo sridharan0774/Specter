@@ -1,13 +1,19 @@
 from fastapi import APIRouter
-from app.api.endpoints import health, cases, trace, vasp, patterns, investigation
+from app.api.endpoints import health, cases, trace, vasp, patterns, investigation, sahyog, intelligence
+
 
 api_router = APIRouter()
+
 api_router.include_router(health.router, tags=["Health"])
 api_router.include_router(cases.router, prefix="/cases", tags=["Cases Management"])
 api_router.include_router(trace.router, tags=["Multi-Hop Tracing Engine"])
 api_router.include_router(vasp.router, tags=["VASP Attribution Engine"])
 api_router.include_router(patterns.router, tags=["Velocity & Typologies Engine"])
 api_router.include_router(investigation.router, tags=["Investigation Orchestrator & Evidence Engine"])
+api_router.include_router(sahyog.router, tags=["SAHYOG Action Center & Package Engine"])
+api_router.include_router(intelligence.router, tags=["Advanced Blockchain Intelligence Engine"])
+
+
 
 
 

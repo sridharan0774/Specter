@@ -1,7 +1,7 @@
 import React from 'react';
 import type { VelocityAnalysisResponse, TypologyAnalysisResponse } from '../types/api';
 import { AlertOctagon, ArrowRight } from 'lucide-react';
-import { formatTimeInterval } from '../utils/formatters';
+import { formatTimeInterval, formatCurrency } from '../utils/formatters';
 
 interface SuspiciousAlertsBannerProps {
   velocityData?: VelocityAnalysisResponse;
@@ -55,7 +55,7 @@ export const SuspiciousAlertsBanner: React.FC<SuspiciousAlertsBannerProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-600 font-sans">
-                <span className="font-mono font-medium text-slate-900">{alert.transfer_count} transfers</span> · <span className="font-mono text-slate-800">{formatTimeInterval(alert.duration_seconds || 41)}</span> · Fastest gap: <span className="font-mono font-medium text-slate-900">{formatTimeInterval(alert.minimum_delta_t)}</span>
+                <span className="font-mono font-medium text-slate-900">{alert.transfer_count} transfers</span> · <span className="font-mono text-slate-800">Initial: {formatCurrency(alert.initial_transfer_amount ?? alert.total_amount)}</span> · <span className="font-mono text-slate-600">Downstream: {formatCurrency(alert.downstream_activity_amount ?? 0)}</span> · Fastest gap: <span className="font-mono font-medium text-slate-900">{alert.minimum_delta_t != null ? formatTimeInterval(alert.minimum_delta_t) : 'N/A'}</span>
               </p>
             </div>
             <button

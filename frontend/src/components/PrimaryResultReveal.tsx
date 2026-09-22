@@ -17,13 +17,7 @@ export const PrimaryResultReveal: React.FC<PrimaryResultRevealProps> = ({
   const primaryCandidate = vaspData?.candidates?.[0];
   const hasVasp = (vaspData?.has_high_confidence_match ?? false) && (vaspData?.status === 'RESOLVED');
   const confidenceScore = primaryCandidate?.attribution_confidence || summary.primary_vasp_confidence || 0;
-
-  const getConfidenceLevel = (score: number) => {
-    if (score >= 80) return 'HIGH CONFIDENCE';
-    if (score >= 70) return 'CONFIDENT';
-    if (score >= 50) return 'MODERATE CONFIDENCE';
-    return 'LOW CONFIDENCE';
-  };
+  const confidenceBand = primaryCandidate?.confidence_band || (confidenceScore >= 80 ? 'HIGH' : confidenceScore >= 60 ? 'MODERATE' : 'LOW');
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-xs font-sans mb-6">
@@ -53,12 +47,15 @@ export const PrimaryResultReveal: React.FC<PrimaryResultRevealProps> = ({
                   {primaryCandidate?.candidate_name || summary.primary_vasp_name || 'Binance Hot Wallet'}
                 </h1>
 
-                <div className="flex items-baseline space-x-2 font-sans">
-                  <span className="text-3xl font-bold text-[#3730A3] font-mono tabular-nums">
-                    {confidenceScore.toFixed(0)}%
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:space-x-3 gap-1 font-sans">
+                  <div className="flex items-baseline space-x-1.5">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">ATTRIBUTION SCORE:</span>
+                    <span className="text-3xl font-bold text-[#3730A3] font-mono tabular-nums">
+                      {confidenceScore.toFixed(0)} / 100
+                    </span>
+                  </div>
                   <span className="text-xs font-semibold uppercase text-slate-600 tracking-wider">
-                    {getConfidenceLevel(confidenceScore)}
+                    CONFIDENCE LEVEL: {confidenceBand}
                   </span>
                 </div>
               </div>

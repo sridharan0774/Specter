@@ -13,6 +13,26 @@ export type InvestigationState =
   | 'PARTIAL'
   | 'FAILED';
 
+export type GraphNodeRole =
+  | 'STARTING'
+  | 'INTERMEDIATE'
+  | 'VASP_ENDPOINT'
+  | 'NON_VASP_ENTITY'
+  | 'TOKEN_CONTRACT'
+  | 'UNKNOWN_WALLET';
+
+export interface GraphNodeDetail {
+  address: string;
+  role: GraphNodeRole;
+  label: string;
+  hopLevel: number;
+  entityLabel?: string;
+  entityRole?: string;
+  walletStatus: string;
+  isTerminal?: boolean;
+  vaspCandidate?: VASPAttributionCandidate;
+}
+
 export interface InvestigationStartRequest {
   wallet: string;
   chain?: string;
@@ -197,10 +217,12 @@ export interface VelocityAlert {
   velocity_score: number;
   transfer_count: number;
   total_amount: number;
+  initial_transfer_amount?: number;
+  downstream_activity_amount?: number;
   duration_seconds: number;
-  minimum_delta_t: number;
-  average_delta_t: number;
-  maximum_delta_t: number;
+  minimum_delta_t?: number | null;
+  average_delta_t?: number | null;
+  maximum_delta_t?: number | null;
   unique_recipients: number;
   downstream_hops: number;
   supporting_transactions: string[];
@@ -291,10 +313,64 @@ export interface SahyogPackage {
   vasp_attribution: Record<string, any>;
   analytical_findings: Record<string, any>[];
   evidence_ledger: Record<string, any>[];
+  evidence_chain?: EvidenceChainStep[];
   velocity_analysis: Record<string, any>;
   typology_analysis: Record<string, any>;
   fund_tracing_graph: Record<string, any>;
+  requested_action?: Record<string, any>;
 }
+
+export interface EvidenceChainStep {
+  step_number: number;
+  element_type: string;
+  label: string;
+  value: string;
+  detail: string;
+}
+
+export interface SahyogValidationResult {
+  valid: boolean;
+  status: 'PACKAGE VALID' | 'PACKAGE INVALID' | string;
+  checked_at: string;
+  checked_fields: string[];
+  errors: string[];
+}
+
+export interface SahyogRequestResponse {
+  request_id: string;
+  case_id: string;
+  job_id?: string;
+  request_type: 'DISCLOSURE_REQUEST' | 'ASSET_PRESERVATION_OR_FREEZE_REQUEST' | string;
+  status: 'DRAFT_REQUIRES_AUTHORISED_REVIEW' | string;
+  package_version: string;
+  integration_status: string;
+  target_wallet: string;
+  chain: string;
+  asset: string;
+  attributed_vasp?: string;
+  endpoint_address?: string;
+  attribution_score: number;
+  confidence_level: string;
+  hop_distance: number;
+  endpoint_status: string;
+  validation_result?: SahyogValidationResult;
+  request_data: Record<string, any>;
+  evidence_chain?: EvidenceChainStep[];
+  evidence_snapshot_reference?: string;
+  exported_path?: string;
+  investigator_id: string;
+  created_at: string;
+}
+
+export interface SahyogStatusContractResponse {
+  integration_status: string;
+  generator_engine: string;
+  contract_notice: string;
+  implemented_features: string[];
+  ready_for_integration_features: string[];
+  future_scope_features: string[];
+}
+
 
 export interface FullInvestigationDataset {
   summary: InvestigationSummarySchema;
@@ -305,6 +381,76 @@ export interface FullInvestigationDataset {
   velocity_analysis: VelocityAnalysisResponse;
   typology_analysis: TypologyAnalysisResponse;
   trace_result: TraceResultResponse;
+}
+
+export interface EntityIntelligenceResponse {
+  address: string;
+  chain: string;
+  entity_name: string;
+  entity_role: 'VASP' | 'DEPOSIT_WALLET' | 'HOT_WALLET' | 'OPERATIONAL_WALLET' | 'CONSOLIDATION_WALLET' | 'TOKEN_ISSUER' | 'TOKEN_CONTRACT' | 'INFRASTRUCTURE' | 'MIXER' | 'BRIDGE' | 'DEX' | 'CROSS_CHAIN_SERVICE' | 'UNKNOWN' | string;
+  entity_type: string;
+  label_type: string;
+  cluster_id?: string;
+  verification_status: 'VERIFIED' | 'ANALYTICAL' | 'UNVERIFIED' | 'UNKNOWN' | string;
+  confidence: number;
+  source_type: string;
+  source_name: string;
+  source_url?: string;
+  notes?: string;
+  is_attributable_vasp: boolean;
+  evidence_summary: string[];
+}
+
+export interface VASPClusterResponse {
+  cluster_id: string;
+  vasp_name: string;
+  chain: string;
+  cluster_type: string;
+  primary_wallet?: string;
+  member_wallets: Array<{
+    address: string;
+    entity_role: string;
+    label_type: string;
+    source?: string;
+  }>;
+  provenance: string;
+  source_quality_level: number;
+  notes?: string;
+}
+
+export interface CrossChainRelationshipItem {
+  relationship_id: string;
+  case_id?: string;
+  source_chain: string;
+  source_address: string;
+  source_tx_hash: string;
+  service_entity: string;
+  bridge_name?: string;
+  destination_chain: string;
+  destination_address: string;
+  destination_tx_hash?: string;
+  relationship_type: 'BRIDGE_TRANSFER' | 'CROSS_CHAIN_SWAP' | 'SERVICE_TRANSFER' | 'UNKNOWN' | string;
+  verification_status: 'VERIFIED' | 'ANALYTICAL' | 'UNVERIFIED' | 'UNKNOWN' | string;
+  confidence: number;
+  evidence_summary: string[];
+  provenance: string;
+}
+
+export interface PatternObservationItem {
+  observation_id: string;
+  case_id?: string;
+  trace_id?: string;
+  target_wallet: string;
+  chain: string;
+  pattern_type: string;
+  verification_status: 'ANALYTICAL';
+  confidence: number;
+  confidence_band: string;
+  indicator_values: Record<string, any>;
+  supporting_transactions: string[];
+  supporting_wallets: string[];
+  explanation: string;
+  observed_at: string;
 }
 
 export interface CaseRead {

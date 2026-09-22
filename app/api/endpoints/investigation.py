@@ -129,6 +129,26 @@ def get_investigation_summary(
     return data.get("summary", data)
 
 
+@router.get("/cases/{case_id}/dataset", summary="Get Full Consolidated Investigation Dataset")
+def get_investigation_dataset(
+    case_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve full consolidated investigation dataset containing summary, risk indicators,
+    VASP attribution, findings, evidence ledger, velocity, typologies, and fund-tracing graph.
+    """
+    export_dir = os.path.join("exports", case_id)
+    json_path = os.path.join(export_dir, "investigation_result.json")
+    if not os.path.exists(json_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No completed investigation dataset found for case '{case_id}'. Execute investigation first.",
+        )
+    with open(json_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 @router.post("/cases/{case_id}/report", summary="Generate Investigation PDF Report")
 async def generate_case_pdf_report(
     case_id: str,

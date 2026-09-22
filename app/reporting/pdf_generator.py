@@ -225,7 +225,7 @@ class PDFReportGenerator:
                     Paragraph(a.severity, table_cell_bold),
                     Paragraph(f"{a.velocity_score:.1f}", table_cell_style),
                     Paragraph(str(a.transfer_count), table_cell_style),
-                    Paragraph(f"{a.minimum_delta_t:.1f}s", table_cell_style),
+                    Paragraph(f"{a.minimum_delta_t:.1f}s" if a.minimum_delta_t is not None else "N/A", table_cell_style),
                     Paragraph(a.explanation, table_cell_style),
                 ])
             alert_table = Table(alert_table_data, colWidths=[1.0 * inch, 0.9 * inch, 0.6 * inch, 0.7 * inch, 0.7 * inch, 3.1 * inch])

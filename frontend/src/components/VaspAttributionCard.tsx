@@ -130,7 +130,7 @@ export const VaspAttributionCard: React.FC<VaspAttributionCardProps> = ({ vaspDa
                   <div className="flex items-center space-x-4 text-slate-600 font-medium">
                     <span>{cand.endpoint_hop_distance} Hop(s)</span>
                     <span className="font-mono font-bold text-slate-800 tabular-nums">
-                      Score: {cand.attribution_confidence.toFixed(1)}% ({cand.confidence_band})
+                      Score: {cand.attribution_confidence.toFixed(0)} / 100 (CONFIDENCE LEVEL: {cand.confidence_band})
                     </span>
                   </div>
                 </div>
@@ -192,6 +192,9 @@ export const VaspAttributionCard: React.FC<VaspAttributionCardProps> = ({ vaspDa
                     <span className="text-[10px] font-sans uppercase bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-semibold">
                       ROLE: {cand.entity_role || 'VASP'}
                     </span>
+                    <span className="text-[10px] font-sans uppercase bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded font-bold">
+                      STATUS: VERIFIED
+                    </span>
                     <span
                       className={`text-[10px] font-sans uppercase px-2 py-0.5 rounded font-semibold border ${
                         isTerminal
@@ -201,6 +204,7 @@ export const VaspAttributionCard: React.FC<VaspAttributionCardProps> = ({ vaspDa
                     >
                       {isTerminal ? 'TERMINAL ENDPOINT' : 'INTERMEDIATE ASSOCIATION'}
                     </span>
+
                   </div>
 
                   {/* Matched Address Strip */}
@@ -260,10 +264,10 @@ export const VaspAttributionCard: React.FC<VaspAttributionCardProps> = ({ vaspDa
                   <div>
                     <div className="flex justify-between items-center text-xs mb-1 font-sans">
                       <span className="text-slate-600 font-semibold text-[11px]">
-                        Attribution Confidence:
+                        ATTRIBUTION SCORE:
                       </span>
                       <span className="font-mono font-bold text-[#3730A3] tabular-nums text-sm">
-                        {cand.attribution_confidence.toFixed(1)}%
+                        {cand.attribution_confidence.toFixed(0)} / 100
                       </span>
                     </div>
                     {/* Horizontal Confidence Bar */}
@@ -274,8 +278,8 @@ export const VaspAttributionCard: React.FC<VaspAttributionCardProps> = ({ vaspDa
                       />
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1 font-sans">
-                      <span>Threshold: 70.0%</span>
-                      <span className="font-semibold text-slate-700 uppercase">{cand.confidence_band} CONFIDENCE</span>
+                      <span>Threshold: 70 / 100</span>
+                      <span className="font-semibold text-slate-700 uppercase">CONFIDENCE LEVEL: {cand.confidence_band}</span>
                     </div>
                   </div>
 

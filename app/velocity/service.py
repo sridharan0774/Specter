@@ -83,6 +83,8 @@ class VelocityService:
                 rolling_windows=metrics.rolling_windows,
                 score_components=score_components,
                 explanation=explanation,
+                initial_transfer_amount=metrics.initial_transfer_amount,
+                downstream_activity_amount=metrics.downstream_activity_amount,
                 analyzed_at=datetime.now(timezone.utc),
             )
             alerts.append(val_alert)
@@ -98,6 +100,8 @@ class VelocityService:
                         "velocity_score": score,
                         "transfer_count": metrics.transfer_count,
                         "total_amount": metrics.total_amount,
+                        "initial_transfer_amount": metrics.initial_transfer_amount,
+                        "downstream_activity_amount": metrics.downstream_activity_amount,
                         "duration_seconds": metrics.duration_seconds,
                         "minimum_delta_t": metrics.minimum_delta_t,
                         "average_delta_t": metrics.average_delta_t,
@@ -125,6 +129,8 @@ class VelocityService:
             metrics={
                 "transfer_count": metrics.transfer_count,
                 "total_amount": metrics.total_amount,
+                "initial_transfer_amount": metrics.initial_transfer_amount,
+                "downstream_activity_amount": metrics.downstream_activity_amount,
                 "duration_seconds": metrics.duration_seconds,
                 "minimum_delta_t": metrics.minimum_delta_t,
                 "average_delta_t": metrics.average_delta_t,

@@ -37,14 +37,15 @@ class VASPRecord(Base, TimestampMixin):
             return False
 
         role = (getattr(self, "entity_role", None) or "VASP").upper()
-        if role in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "INFRASTRUCTURE"):
+        if role in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "INFRASTRUCTURE", "MIXER", "BRIDGE", "DEX", "CROSS_CHAIN_SERVICE"):
             return False
 
         etype = (self.entity_type or "").upper()
-        if etype in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "CONTRACT", "INFRASTRUCTURE"):
+        if etype in ("TOKEN_CONTRACT", "TOKEN_ISSUER", "CONTRACT", "INFRASTRUCTURE", "MIXER", "BRIDGE", "DEX", "CROSS_CHAIN_SERVICE"):
             return False
 
-        return role in ("VASP", "EXCHANGE", "CUSTODIAL") or etype in ("VASP", "EXCHANGE", "CUSTODIAL", "DEPOSIT_WALLET", "HOT_WALLET")
+        return role in ("VASP", "EXCHANGE", "CUSTODIAL", "DEPOSIT_WALLET", "HOT_WALLET") or etype in ("VASP", "EXCHANGE", "CUSTODIAL", "DEPOSIT_WALLET", "HOT_WALLET")
+
 
 
 class VASPAttribution(Base, TimestampMixin):
@@ -85,6 +86,26 @@ class VASPAttribution(Base, TimestampMixin):
     trace_run = relationship("TraceRun")
 
 
+class VASPCluster(Base, TimestampMixin):
+    """
+    Database model establishing VASP Wallet Cluster foundation.
+    Connects verified deposit, hot, operational, and cold storage wallets to parent VASP entities
+    with explicit role taxonomy and source provenance.
+    """
+    __tablename__ = "vasp_clusters"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cluster_id = Column(String(64), unique=True, nullable=False, index=True)
+    vasp_name = Column(String(128), nullable=False, index=True)
+    chain = Column(String(32), nullable=False, index=True)
+    cluster_type = Column(String(64), nullable=False, default="EXCHANGE_CLUSTER")
+    primary_wallet = Column(String(128), nullable=True)
+    member_wallets = Column(JSON, nullable=False, default=list)  # list of {address, entity_role, label_type, source}
+    provenance = Column(String(256), nullable=False)
+    source_quality_level = Column(Integer, nullable=False, default=1)
+    notes = Column(Text, nullable=True)
+
+
 class VASPCandidate(Base, TimestampMixin):
     """Database model for storing VASP candidates ranked for a specific case (Legacy compatibility)."""
     __tablename__ = "vasp_candidates"
@@ -100,4 +121,6 @@ class VASPCandidate(Base, TimestampMixin):
     source_labels = Column(JSON, nullable=False)
 
     case = relationship("Case", back_populates="vasp_candidates")
+
+
 

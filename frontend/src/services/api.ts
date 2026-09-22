@@ -6,8 +6,12 @@ import type {
   InvestigationSummarySchema,
   FullInvestigationDataset,
   SahyogPackage,
+  SahyogRequestResponse,
+  SahyogValidationResult,
+  SahyogStatusContractResponse,
   CaseRead,
 } from '../types/api';
+
 
 const API_BASE = '/api/v1';
 
@@ -126,6 +130,12 @@ export const apiService = {
   },
 
   async getFullDataset(caseId: string): Promise<FullInvestigationDataset> {
+    try {
+      const res = await fetch(`${API_BASE}/cases/${caseId}/dataset`);
+      if (res.ok) return await res.json();
+    } catch {
+      // fallback to export/json
+    }
     const res = await fetch(`${API_BASE}/cases/${caseId}/export/json`);
     return handleResponse(res);
   },
@@ -136,6 +146,52 @@ export const apiService = {
 
   async getSahyogPackage(caseId: string): Promise<SahyogPackage> {
     const res = await fetch(`${API_BASE}/cases/${caseId}/sahyog-package`);
+    return handleResponse(res);
+  },
+
+  async prepareSahyogDisclosureRequest(
+    caseId: string,
+    investigatorId?: string,
+    reason?: string
+  ): Promise<SahyogRequestResponse> {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/sahyog/disclosure-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ investigator_id: investigatorId, reason_for_request: reason }),
+    });
+    return handleResponse(res);
+  },
+
+  async prepareSahyogFreezeRequest(
+    caseId: string,
+    investigatorId?: string,
+    reason?: string,
+    urgencyLevel?: string
+  ): Promise<SahyogRequestResponse> {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/sahyog/freeze-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ investigator_id: investigatorId, reason_for_request: reason, urgency_level: urgencyLevel }),
+    });
+    return handleResponse(res);
+  },
+
+  async validateSahyogPackage(caseId: string, packageData?: any): Promise<SahyogValidationResult> {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/sahyog/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: packageData ? JSON.stringify(packageData) : undefined,
+    });
+    return handleResponse(res);
+  },
+
+  async getSahyogStatus(caseId: string): Promise<SahyogStatusContractResponse> {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/sahyog/status`);
+    return handleResponse(res);
+  },
+
+  async listSahyogRequests(caseId: string): Promise<SahyogRequestResponse[]> {
+    const res = await fetch(`${API_BASE}/cases/${caseId}/sahyog/requests`);
     return handleResponse(res);
   },
 

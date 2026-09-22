@@ -2,12 +2,14 @@ from app.models.base import TimestampMixin
 from app.models.case import Case
 from app.models.transaction import NormalizedTransaction
 from app.models.wallet import Wallet
-from app.models.vasp import VASPRecord, VASPCandidate, VASPAttribution
+from app.models.vasp import VASPRecord, VASPAttribution, VASPCluster, VASPCandidate
 from app.models.evidence import EvidenceItem
 from app.models.alert import Alert
 from app.models.trace import TraceRun, TraceNode, TraceEdge, TracePath
 from app.models.investigation import InvestigationJob, InvestigationSnapshot
 from app.models.finding import Finding
+from app.models.sahyog import SahyogRequest
+from app.models.intelligence import CrossChainRelationship, PatternObservation
 
 __all__ = [
     "TimestampMixin",
@@ -15,8 +17,9 @@ __all__ = [
     "NormalizedTransaction",
     "Wallet",
     "VASPRecord",
-    "VASPCandidate",
     "VASPAttribution",
+    "VASPCluster",
+    "VASPCandidate",
     "EvidenceItem",
     "Alert",
     "TraceRun",
@@ -26,6 +29,8 @@ __all__ = [
     "InvestigationJob",
     "InvestigationSnapshot",
     "Finding",
+    "SahyogRequest",
+    "CrossChainRelationship",
+    "PatternObservation",
 ]
-
 

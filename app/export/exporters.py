@@ -192,13 +192,19 @@ class DataExporter:
                 "velocity_score": a.velocity_score,
                 "transfer_count": a.transfer_count,
                 "total_amount": a.total_amount,
-                "minimum_delta_t": a.minimum_delta_t,
-                "average_delta_t": a.average_delta_t,
+                "initial_transfer_amount": getattr(a, "initial_transfer_amount", 0.0),
+                "downstream_activity_amount": getattr(a, "downstream_activity_amount", 0.0),
+                "minimum_delta_t": "" if a.minimum_delta_t is None else a.minimum_delta_t,
+                "average_delta_t": "" if a.average_delta_t is None else a.average_delta_t,
                 "reason_codes": "|".join(a.reason_codes),
                 "explanation": a.explanation,
             })
         with open(alerts_csv_path, "w", newline="", encoding="utf-8") as f:
-            fieldnames = ["alert_id", "alert_type", "severity", "velocity_score", "transfer_count", "total_amount", "minimum_delta_t", "average_delta_t", "reason_codes", "explanation"]
+            fieldnames = [
+                "alert_id", "alert_type", "severity", "velocity_score", "transfer_count",
+                "total_amount", "initial_transfer_amount", "downstream_activity_amount",
+                "minimum_delta_t", "average_delta_t", "reason_codes", "explanation"
+            ]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(alert_rows)

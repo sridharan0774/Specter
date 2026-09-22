@@ -8,7 +8,8 @@ from typing import List, Dict, Any, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 
 from app.blockchain.base import BlockchainAdapter
-from app.blockchain.tron.adapter import TronAdapter, TRON_USDT_CONTRACT
+from app.blockchain.registry import ChainRegistry
+from app.blockchain.tron.adapter import TRON_USDT_CONTRACT
 from app.models.trace import TraceRun, TraceNode, TraceEdge, TracePath
 from app.schemas.trace import TraceRequest, TraceResultResponse, TracePathDetail, TraceHopItem
 from app.schemas.transaction import NormalizedTransactionBase
@@ -31,14 +32,17 @@ class TraceEngine:
 
     def __init__(self, db: Session, adapter: Optional[BlockchainAdapter] = None):
         self.db = db
-        self.adapter = adapter or TronAdapter()
+        self.adapter = adapter
 
     async def execute_trace(self, request: TraceRequest, case_id: Optional[str] = None) -> TraceResultResponse:
         start_time_monotonic = time.monotonic()
         start_dt = datetime.now(timezone.utc)
         trace_id = str(uuid.uuid4())
 
+        self.adapter = self.adapter or ChainRegistry.get_adapter(request.chain)
         starting_wallet = request.starting_wallet.strip()
+
+
 
         # Create initial TraceRun record
         trace_run = TraceRun(
@@ -112,17 +116,25 @@ class TraceEngine:
             max_pages = max(1, request.max_transactions_per_wallet // 50)
 
             try:
-                fetch_res = await self.adapter.get_all_token_transfers(
-                    address=curr_wallet,
-                    token_contract=token_contract,
-                    max_pages=max_pages,
-                    page_size=min(request.max_transactions_per_wallet, 50),
-                )
+                if hasattr(self.adapter, "get_all_token_transfers"):
+                    fetch_res = await self.adapter.get_all_token_transfers(
+                        address=curr_wallet,
+                        token_contract=token_contract,
+                        max_pages=max_pages,
+                        page_size=min(request.max_transactions_per_wallet, 50),
+                    )
+                    fetched_txs: List[NormalizedTransactionBase] = fetch_res.get("transactions", [])
+                else:
+                    raw_txs = await self.adapter.get_token_transfers(
+                        address=curr_wallet,
+                        token_contract=token_contract,
+                        limit=min(request.max_transactions_per_wallet, 50),
+                    )
+                    fetched_txs = [self.adapter.normalize_transaction(raw) for raw in raw_txs]
             except Exception as e:
                 logger.error(f"Error fetching transfers for {curr_wallet}: {e}")
                 continue
 
-            fetched_txs: List[NormalizedTransactionBase] = fetch_res.get("transactions", [])
 
             # Enforce hard transaction ceiling strictly against batch overshoot
             remaining_quota = max(0, request.max_total_transactions - total_tx_analyzed)

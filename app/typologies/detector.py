@@ -114,7 +114,18 @@ class TypologyDetector:
             if vasp_conv_res:
                 results.append(vasp_conv_res)
 
+        # 7. MIXER_LIKE Pattern Detection
+        mixer_res = self._detect_mixer_like(hops)
+        if mixer_res:
+            results.append(mixer_res)
+
+        # 8. CROSS_CHAIN_MOVEMENT & BRIDGE_INTERACTION Detection
+        cross_res = self._detect_cross_chain_interaction(hops)
+        if cross_res:
+            results.append(cross_res)
+
         return results
+
 
     def _detect_fan_out(
         self, hops: List[TraceHopItem], is_known_service: bool
@@ -288,25 +299,26 @@ class TypologyDetector:
 
     def _detect_rapid_peel(self, paths: List[TracePathDetail]) -> Optional[TypologyResult]:
         """Detect Rapid Peel-Like Movement (sequential downstream transfers with short time gaps and high value retention)."""
-        qualifying_paths: List[TracePathDetail] = []
+        qualifying_paths: List[Tuple[TracePathDetail, float]] = []
 
         for p in paths:
             if p.hop_count >= 2 and p.value_retention_percent >= 70.0:
-                avg_delta = p.elapsed_time_seconds / max(1, p.hop_count)
-                if avg_delta <= 1800.0:  # <= 30 mins per hop
-                    qualifying_paths.append(p)
+                valid_deltas = [h.delta_t_seconds for h in p.hops if h.delta_t_seconds is not None]
+                if valid_deltas:
+                    avg_delta = sum(valid_deltas) / len(valid_deltas)
+                    if avg_delta <= 1800.0:  # <= 30 mins per hop
+                        qualifying_paths.append((p, avg_delta))
 
         if not qualifying_paths:
             return None
 
-        best_path = max(qualifying_paths, key=lambda x: x.hop_count)
-        avg_delta = best_path.elapsed_time_seconds / max(1, best_path.hop_count)
-
+        best_path, avg_delta = max(qualifying_paths, key=lambda pair: pair[0].hop_count)
         tx_hashes = [h.tx_hash for h in best_path.hops if h.tx_hash]
 
+        timing_desc = "same-block execution (0.0s)" if avg_delta == 0.0 else f"average delta_t of {avg_delta:.1f}s"
         desc = (
             f"Rapid Peel-Like Movement detected: Observed {best_path.hop_count} sequential downstream transfers "
-            f"with average delta_t of {avg_delta:.1f}s and {best_path.value_retention_percent:.1f}% value retention."
+            f"with {timing_desc} and {best_path.value_retention_percent:.1f}% value retention."
         )
 
         return TypologyResult(
@@ -315,7 +327,7 @@ class TypologyDetector:
             severity="HIGH" if best_path.hop_count >= 3 else "MODERATE",
             description=desc,
             trigger_conditions=[
-                f"Sequential downstream movement over {best_path.hop_count} hops with average gap {avg_delta:.1f}s and high value retention ({best_path.value_retention_percent:.1f}%)"
+                f"Sequential downstream movement over {best_path.hop_count} hops with {timing_desc} and high value retention ({best_path.value_retention_percent:.1f}%)"
             ],
             metrics={
                 "hop_count": best_path.hop_count,
@@ -417,3 +429,59 @@ class TypologyDetector:
             confidence=round(top_cand.source_confidence, 2),
             is_known_service=True,
         )
+
+    def _detect_mixer_like(self, hops: List[TraceHopItem]) -> Optional[TypologyResult]:
+        """Detect analytical mixer-like activity (equal-split distributions or rapid fan-in/fan-out redistribution)."""
+        if not hops:
+            return None
+
+        out_map: Dict[str, List[TraceHopItem]] = defaultdict(list)
+        for h in hops:
+            out_map[h.from_address].append(h)
+
+        for sender, s_hops in out_map.items():
+            amounts = [h.amount for h in s_hops if h.amount > 0]
+            if len(amounts) >= 3:
+                rounded_amts = set(round(a, 2) for a in amounts)
+                if len(rounded_amts) == 1:
+                    tx_hashes = [h.tx_hash for h in s_hops]
+                    wallets = [sender] + [h.to_address for h in s_hops]
+                    return TypologyResult(
+                        typology_id=f"typ-mixerlike-{sender[:6]}",
+                        typology_name="POTENTIAL_MIXER_LIKE_ACTIVITY",
+                        severity="HIGH",
+                        description=f"POTENTIAL MIXER-LIKE ACTIVITY detected: Wallet {sender[:10]}... distributed equal amounts (${amounts[0]:,.2f}) to {len(amounts)} recipients. (Analytical pattern indication, not confirmed service identity).",
+                        trigger_conditions=["Wallet performed equal-value split redistribution across 3+ outputs"],
+                        metrics={"sender_wallet": sender, "equal_split_amount": amounts[0], "branch_count": len(amounts)},
+                        supporting_transactions=tx_hashes,
+                        supporting_wallets=wallets,
+                        supporting_paths=[],
+                        confidence=0.75,
+                        is_known_service=False,
+                    )
+        return None
+
+    def _detect_cross_chain_interaction(self, hops: List[TraceHopItem]) -> Optional[TypologyResult]:
+        """Detect cross-chain movement or bridge interaction indications."""
+        bridge_addresses = {
+            "0x1000000000000000000000000000000000000001",
+            "0x45A1562158b9993d09319254027001C8A1d25816",
+            "0xChangeNOW111111111111111111111111111111",
+        }
+        for h in hops:
+            if h.to_address.lower() in [b.lower() for b in bridge_addresses] or h.from_address.lower() in [b.lower() for b in bridge_addresses]:
+                return TypologyResult(
+                    typology_id=f"typ-bridge-{h.tx_hash[:6]}",
+                    typology_name="BRIDGE_INTERACTION",
+                    severity="MODERATE",
+                    description=f"Bridge / Cross-Chain Service interaction detected on transaction {h.tx_hash[:10]}...",
+                    trigger_conditions=["Transaction interacted with verified cross-chain bridge or swap router"],
+                    metrics={"tx_hash": h.tx_hash, "amount": h.amount, "asset": h.asset},
+                    supporting_transactions=[h.tx_hash],
+                    supporting_wallets=[h.from_address, h.to_address],
+                    supporting_paths=[],
+                    confidence=1.0,
+                    is_known_service=True,
+                )
+        return None
+

@@ -1,27 +1,50 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import type { TraceResultResponse, TraceHopItem, VASPAttributionResponse } from '../types/api';
-import { ZoomIn, ZoomOut, RefreshCw, Maximize2, ExternalLink, Clock, Hash, Layers, Filter } from 'lucide-react';
+import type {
+  TraceResultResponse,
+  TraceHopItem,
+  VASPAttributionResponse,
+  GraphNodeRole,
+  GraphNodeDetail,
+  VASPAttributionCandidate,
+} from '../types/api';
+import {
+  ZoomIn,
+  ZoomOut,
+  RefreshCw,
+  Maximize2,
+  ExternalLink,
+  Clock,
+  Hash,
+  Layers,
+  Filter,
+  Compass,
+  FileCode,
+  ShieldCheck,
+} from 'lucide-react';
 import { buildExplorerUrl } from '../utils/explorer';
 import { formatCurrency, formatTimeInterval, formatExactNumber } from '../utils/formatters';
 
 interface FundFlowGraphProps {
-  traceData?: TraceResultResponse;
-  vaspData?: VASPAttributionResponse;
+  traceData?: TraceResultResponse | null;
+  vaspData?: VASPAttributionResponse | null;
   selectedPathId?: string;
   onSelectPath?: (pathId: string) => void;
-  onNodeClick: (address: string, role: string) => void;
+  onNodeClick: (address: string, role: GraphNodeRole, detail: GraphNodeDetail) => void;
   onEdgeClick: (hop: TraceHopItem) => void;
 }
 
 export interface NodePosition {
   id: string;
   address: string;
-  role: 'STARTING' | 'INTERMEDIARY' | 'KNOWN_ENTITY' | 'VASP_ENDPOINT' | 'TRACE_ENDPOINT';
+  role: GraphNodeRole;
   x: number;
   y: number;
   hopLevel: number;
   label: string;
-  vaspName?: string;
+  entityLabel?: string;
+  entityRole?: string;
+  walletStatus: string;
+  vaspCandidate?: VASPAttributionCandidate;
 }
 
 export interface EdgePosition {
@@ -32,6 +55,11 @@ export interface EdgePosition {
   hop: TraceHopItem;
   pathIds: string[];
 }
+
+const KNOWN_CONTRACT_ADDRESSES = new Set([
+  'TR7NHQJEKQXGTCI8Q8ZY4PL8OTSZGJLJ6T', // Tether USD Contract
+  'TEZFAYL8TEWPCEE9KWSCBRUE65GMMDTBQL', // Tether Treasury
+]);
 
 export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
   traceData,
@@ -73,27 +101,56 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
     };
   }, [traceData, viewMode]);
 
-  // VASP Candidate Endpoints Set
-  const vaspAddresses = useMemo(() => {
-    const set = new Set<string>();
+  // VASP Candidate Map (Address -> Candidate)
+  const vaspCandidatesMap = useMemo(() => {
+    const map = new Map<string, VASPAttributionCandidate>();
     if (vaspData?.candidates) {
-      vaspData.candidates.forEach((c) => set.add(c.endpoint_address));
+      vaspData.candidates.forEach((c) => {
+        if (c.endpoint_address) {
+          map.set(c.endpoint_address.toUpperCase(), c);
+        }
+      });
     }
-    return set;
+    return map;
   }, [vaspData]);
 
+  // Helper: Address truncation
+  function truncateAddress(addr: string) {
+    if (!addr || addr.length < 10) return addr;
+    return `${addr.substring(0, 4)}...${addr.substring(addr.length - 4)}`;
+  }
+
+  // Active path fallback selection
+  const activePathId = selectedPathId || pathsToDisplay[0]?.path_id || '';
+
+  // Identify top VASP path for the "Follow Path to VASP" quick action
+  const topVaspCandidate = vaspData?.candidates?.[0];
+  const pathToVasp = useMemo(() => {
+    if (!topVaspCandidate?.endpoint_address || !traceData?.paths) return null;
+    const target = topVaspCandidate.endpoint_address.toUpperCase();
+    return traceData.paths.find((p) =>
+      p.wallet_sequence?.some((w) => w.toUpperCase() === target)
+    );
+  }, [topVaspCandidate, traceData]);
+
   // HIERARCHICAL / DAG HOP-BASED LAYOUT CALCULATION
-  const { nodes, edges, graphBounds } = useMemo(() => {
+  const { nodes, edges, graphBounds, hopLevels } = useMemo(() => {
     if (!traceData || pathsToDisplay.length === 0) {
-      return { nodes: [], edges: [], graphBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 } };
+      return {
+        nodes: [],
+        edges: [],
+        graphBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+        hopLevels: [],
+      };
     }
 
     const startWallet = traceData.starting_wallet;
     const nodeHopMap = new Map<string, number>();
-    const nodeRoleMap = new Map<string, NodePosition['role']>();
+    const nodeRoleMap = new Map<string, GraphNodeRole>();
+    const nodeDetailMap = new Map<string, Partial<NodePosition>>();
     const edgeMap = new Map<string, EdgePosition>();
 
-    // 1. Identify all nodes with outgoing transfers (part of continuing fund-flow paths)
+    // 1. Identify all nodes with outgoing transfers
     const outgoingAddresses = new Set<string>();
     pathsToDisplay.forEach((path) => {
       path.hops.forEach((h) => {
@@ -105,7 +162,6 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
     pathsToDisplay.forEach((path) => {
       const seq = path.wallet_sequence || [];
       seq.forEach((addr, idx) => {
-        // Minimum hop level across paths
         const currentHop = nodeHopMap.get(addr);
         if (currentHop === undefined || idx < currentHop) {
           nodeHopMap.set(addr, idx);
@@ -138,37 +194,87 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
       });
     });
 
-    // 3. Assign semantic node roles accurately
+    // 3. Assign semantic node roles with strict classification
     nodeHopMap.forEach((_, addr) => {
-      let role: NodePosition['role'] = 'INTERMEDIARY';
-      if (addr === startWallet) {
-        role = 'STARTING';
-      } else if (vaspAddresses.has(addr)) {
-        role = 'VASP_ENDPOINT';
-      } else if (addr.startsWith('TB')) {
-        role = 'KNOWN_ENTITY';
-      } else if (!outgoingAddresses.has(addr)) {
-        // Tracing currently ends at this wallet because no further relevant downstream transfer was discovered
-        role = 'TRACE_ENDPOINT';
-      } else {
-        role = 'INTERMEDIARY';
+      const addrUpper = addr.toUpperCase();
+      let role: GraphNodeRole = 'INTERMEDIATE';
+      let entityLabel: string | undefined;
+      let entityRole: string | undefined;
+      let walletStatus = 'Intermediate Wallet';
+      let vaspCandidate: VASPAttributionCandidate | undefined;
+
+      // RULE A: Token Contracts are NEVER treated as VASPs
+      if (KNOWN_CONTRACT_ADDRESSES.has(addrUpper)) {
+        role = 'TOKEN_CONTRACT';
+        entityLabel = 'USDT Contract';
+        entityRole = 'TOKEN_CONTRACT';
+        walletStatus = 'Token Contract / Infrastructure';
       }
+      // RULE B: Starting Wallet
+      else if (addr === startWallet) {
+        role = 'STARTING';
+        walletStatus = 'Starting Wallet';
+      }
+      // RULE C: Verified VASP Endpoints
+      else if (vaspCandidatesMap.has(addrUpper)) {
+        const cand = vaspCandidatesMap.get(addrUpper)!;
+        if (cand.attribution_type === 'TOKEN_CONTRACT' || cand.entity_role === 'TOKEN_CONTRACT') {
+          role = 'TOKEN_CONTRACT';
+          entityLabel = cand.candidate_name;
+          entityRole = 'TOKEN_CONTRACT';
+          walletStatus = 'Token Contract / Infrastructure';
+        } else if (cand.entity_role === 'TOKEN_ISSUER' || cand.entity_role === 'BRIDGE') {
+          role = 'NON_VASP_ENTITY';
+          entityLabel = cand.candidate_name;
+          entityRole = cand.entity_role;
+          walletStatus = 'Non-VASP Entity';
+        } else {
+          role = 'VASP_ENDPOINT';
+          entityLabel = cand.candidate_name;
+          entityRole = cand.entity_role || 'EXCHANGE_HOT_WALLET';
+          walletStatus = 'Verified VASP Endpoint';
+          vaspCandidate = cand;
+        }
+      }
+      // RULE D: Known Non-VASP Entity
+      else if (addr.startsWith('TB') && !outgoingAddresses.has(addr)) {
+        role = 'NON_VASP_ENTITY';
+        entityLabel = 'Known Infrastructure';
+        walletStatus = 'Non-VASP Entity';
+      }
+      // RULE E: Intermediate Wallets
+      else if (outgoingAddresses.has(addr)) {
+        role = 'INTERMEDIATE';
+        walletStatus = 'Intermediate Wallet';
+      }
+      // RULE F: Unknown Wallet / Leaf
+      else {
+        role = 'UNKNOWN_WALLET';
+        walletStatus = 'Unknown Wallet';
+      }
+
       nodeRoleMap.set(addr, role);
+      nodeDetailMap.set(addr, {
+        role,
+        entityLabel,
+        entityRole,
+        walletStatus,
+        vaspCandidate,
+      });
     });
 
-    // 2. Group nodes into hop columns
+    // 4. Group nodes into hop columns
     const columnsMap = new Map<number, string[]>();
     nodeHopMap.forEach((hopLevel, addr) => {
       if (!columnsMap.has(hopLevel)) columnsMap.set(hopLevel, []);
       columnsMap.get(hopLevel)!.push(addr);
     });
 
-    // Sorted hop levels: 0, 1, 2, ...
-    const hopLevels = Array.from(columnsMap.keys()).sort((a, b) => a - b);
+    const sortedHopLevels = Array.from(columnsMap.keys()).sort((a, b) => a - b);
 
-    // 3. Coordinate calculation constants
-    const COLUMN_SPACING = 270; // Horizontal distance between hops (px)
-    const NODE_VERTICAL_SPACING = 115; // Vertical distance between sibling nodes (px)
+    // 5. Coordinate calculation constants
+    const COLUMN_SPACING = 280; // Horizontal distance between hops (px)
+    const NODE_VERTICAL_SPACING = 125; // Vertical distance between sibling nodes (px)
 
     const nodePosMap = new Map<string, { x: number; y: number; hopLevel: number }>();
 
@@ -184,12 +290,11 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
       });
     }
 
-    // Position subsequent Columns (1..N) with parent-guided vertical ordering to minimize line crossings
-    hopLevels.forEach((hopLevel) => {
+    // Position subsequent Columns (1..N) with parent-guided vertical ordering
+    sortedHopLevels.forEach((hopLevel) => {
       if (hopLevel === 0) return;
       const colNodes = columnsMap.get(hopLevel)!;
 
-      // Calculate average parent Y coordinate for each node in this column
       const nodeParentY = new Map<string, number>();
       colNodes.forEach((addr) => {
         let parentYSum = 0;
@@ -203,10 +308,8 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
         nodeParentY.set(addr, parentCount > 0 ? parentYSum / parentCount : 0);
       });
 
-      // Sort nodes in column by parent Y coordinate to keep related branches visually grouped
       colNodes.sort((a, b) => (nodeParentY.get(a) || 0) - (nodeParentY.get(b) || 0));
 
-      // Compute Y positions centered around median
       const totalColHeight = (colNodes.length - 1) * NODE_VERTICAL_SPACING;
       const startY = -totalColHeight / 2;
 
@@ -219,13 +322,8 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
 
     // Build Node objects
     const formattedNodes: NodePosition[] = Array.from(nodePosMap.entries()).map(([addr, pos]) => {
-      const role = nodeRoleMap.get(addr) || 'INTERMEDIARY';
-      let vaspName: string | undefined;
-
-      if (role === 'VASP_ENDPOINT' && vaspData?.candidates) {
-        const matched = vaspData.candidates.find((c) => c.endpoint_address === addr);
-        if (matched) vaspName = matched.candidate_name;
-      }
+      const details = nodeDetailMap.get(addr) || {};
+      const role = (details.role || 'INTERMEDIATE') as GraphNodeRole;
 
       return {
         id: addr,
@@ -235,7 +333,10 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
         y: pos.y,
         hopLevel: pos.hopLevel,
         label: truncateAddress(addr),
-        vaspName,
+        entityLabel: details.entityLabel,
+        entityRole: details.entityRole,
+        walletStatus: details.walletStatus || 'Wallet',
+        vaspCandidate: details.vaspCandidate,
       };
     });
 
@@ -261,29 +362,20 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
       maxY = 0;
     }
 
-    // Node padding offset for bounds calculation
-    minX -= 70;
-    maxX += 90;
-    minY -= 70;
-    maxY += 90;
+    minX -= 90;
+    maxX += 100;
+    minY -= 100;
+    maxY += 110;
 
     return {
       nodes: formattedNodes,
       edges: formattedEdges,
       graphBounds: { minX, maxX, minY, maxY },
+      hopLevels: sortedHopLevels,
     };
-  }, [traceData, pathsToDisplay, vaspAddresses, vaspData]);
+  }, [traceData, pathsToDisplay, vaspCandidatesMap]);
 
-  // Active path fallback selection
-  const activePathId = selectedPathId || traceData?.paths?.[0]?.path_id || '';
-
-  // Helper: Address truncation
-  function truncateAddress(addr: string) {
-    if (!addr || addr.length < 10) return addr;
-    return `${addr.substring(0, 4)}...${addr.substring(addr.length - 4)}`;
-  }
-
-  // AUTO-FIT VIEWPORT ENGINE: Fit graph nicely to viewport container
+  // AUTO-FIT VIEWPORT ENGINE
   const fitGraph = useCallback(() => {
     if (!containerRef.current || nodes.length === 0) return;
 
@@ -299,7 +391,6 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
     const scaleX = (containerWidth - 2 * paddingX) / boundsWidth;
     const scaleY = (containerHeight - 2 * paddingY) / boundsHeight;
 
-    // Clamp scale for optimal legibility (never microscopically small, never huge)
     let calculatedScale = Math.min(scaleX, scaleY);
     calculatedScale = Math.max(0.4, Math.min(1.15, calculatedScale));
 
@@ -316,9 +407,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
     });
   }, [graphBounds, nodes.length]);
 
-  // Auto-fit on layout calculation or view mode toggle
   useEffect(() => {
-    // Delay slightly to ensure DOM container measurement is accurate
     const timer = setTimeout(() => {
       fitGraph();
     }, 40);
@@ -327,7 +416,6 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
 
   // Pan & Drag Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag on left click and on SVG background
     if (e.button !== 0) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
@@ -347,7 +435,6 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
     setIsDragging(false);
   };
 
-  // Zoom Handlers
   const handleZoomIn = () => {
     setTransform((prev) => ({
       ...prev,
@@ -371,24 +458,61 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
     }));
   };
 
+  // Handler for Follow Path to VASP
+  const handleFollowPathToVasp = () => {
+    if (!pathToVasp) return;
+    if (onSelectPath) {
+      onSelectPath(pathToVasp.path_id);
+    }
+    if (topVaspCandidate) {
+      const vaspNode = nodes.find((n) => n.address.toUpperCase() === topVaspCandidate.endpoint_address.toUpperCase());
+      if (vaspNode) {
+        onNodeClick(vaspNode.address, vaspNode.role, {
+          address: vaspNode.address,
+          role: vaspNode.role,
+          label: vaspNode.label,
+          hopLevel: vaspNode.hopLevel,
+          entityLabel: vaspNode.entityLabel,
+          entityRole: vaspNode.entityRole,
+          walletStatus: vaspNode.walletStatus,
+          isTerminal: true,
+          vaspCandidate: topVaspCandidate,
+        });
+      }
+    }
+  };
+
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden mb-8 font-sans">
+    <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden mb-6 font-sans">
       {/* Canvas Top Bar */}
       <div className="px-6 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <Layers className="w-4 h-4 text-[#3730A3]" />
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700 font-sans">
-              Fund Flow Graph (Hierarchical DAG Layout)
+            <Layers className="w-4 h-4 text-indigo-700" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">
+              FUND FLOW GRAPH — DIRECTED FORENSIC DAG
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5 font-sans">
-            Left-to-right hop progression showing starting wallet, intermediaries, trace endpoints, and VASP endpoints.
+            Central investigation workspace: Hop progression flows from Starting Wallet through Intermediaries to Verified VASP Endpoints.
           </p>
         </div>
 
-        {/* Path View Mode Filter Toggle */}
-        <div className="flex items-center space-x-3">
+        {/* Action Controls */}
+        <div className="flex items-center space-x-3 flex-wrap gap-2">
+          {/* Follow Path to VASP Button */}
+          {pathToVasp && topVaspCandidate && (
+            <button
+              onClick={handleFollowPathToVasp}
+              className="flex items-center space-x-1.5 px-3 py-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded text-xs font-semibold shadow-xs transition-colors"
+              title={`Highlight direct fund path from starting wallet to ${topVaspCandidate.candidate_name}`}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Follow Path to {topVaspCandidate.candidate_name}</span>
+            </button>
+          )}
+
+          {/* Path View Mode Filter Toggle */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded border border-slate-200 font-sans text-xs">
             <button
               onClick={() => setViewMode('TOP')}
@@ -400,7 +524,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
               title="Show top 3 relevant investigation paths"
             >
               <span className="flex items-center space-x-1">
-                <Filter className="w-3 h-3 text-[#3730A3]" />
+                <Filter className="w-3 h-3 text-indigo-700" />
                 <span>TOP PATHS ({Math.min(3, totalPathsCount)})</span>
               </span>
             </button>
@@ -422,7 +546,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
           <div className="flex items-center space-x-1 bg-white p-1 rounded border border-slate-200 text-slate-600 shadow-xs">
             <button
               onClick={fitGraph}
-              className="p-1 hover:bg-slate-100 rounded text-[#3730A3] font-medium"
+              className="p-1 hover:bg-slate-100 rounded text-indigo-700 font-medium"
               title="Fit Graph to Viewport"
             >
               <Maximize2 className="w-4 h-4" />
@@ -447,7 +571,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
             <button
               onClick={fitGraph}
               className="p-1 hover:bg-slate-100 rounded ml-0.5 text-slate-500"
-              title="Reset View"
+              title="Recenter View"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -455,59 +579,64 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
         </div>
       </div>
 
-      {/* Graph Legend Sub-header */}
+      {/* Graph Legend Sub-header (Categories distinguished) */}
       <div className="px-6 py-2 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between text-[11px] font-sans">
         <div className="flex items-center space-x-5 flex-wrap gap-y-1">
           <div className="flex items-center space-x-1.5 text-indigo-900 font-semibold">
-            <span className="w-3 h-3 rounded-full bg-indigo-600 inline-block border border-white shadow-2xs" />
+            <span className="w-3 h-3 rounded-full bg-indigo-700 inline-block border-2 border-white shadow-2xs" />
             <span>STARTING WALLET</span>
           </div>
 
           <div className="flex items-center space-x-1.5 text-slate-700">
             <span className="w-3 h-3 rounded-full bg-white border-2 border-slate-500 inline-block" />
-            <span>INTERMEDIARY</span>
+            <span>INTERMEDIATE WALLET</span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 text-indigo-950 font-bold">
+            <span className="w-3 h-3 bg-indigo-900 rotate-45 rounded-2xs inline-block border border-indigo-400" />
+            <span>VERIFIED VASP ENDPOINT</span>
           </div>
 
           <div className="flex items-center space-x-1.5 text-teal-800 font-medium">
             <span className="w-3 h-3 bg-teal-600 rounded-2xs inline-block" />
-            <span>KNOWN ENTITY</span>
+            <span>NON-VASP ENTITY</span>
           </div>
 
-          <div className="flex items-center space-x-1.5 text-amber-900 font-semibold">
+          <div className="flex items-center space-x-1.5 text-slate-700 font-medium">
+            <span className="w-3 h-3 bg-slate-500 rounded-2xs inline-block border border-slate-400" />
+            <span>TOKEN CONTRACT (NOT A VASP)</span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 text-amber-800 font-medium">
             <span className="w-3 h-3 bg-amber-100 border border-dashed border-amber-600 rounded-2xs inline-block" />
-            <span>TRACE ENDPOINT</span>
-          </div>
-
-          <div className="flex items-center space-x-1.5 text-indigo-950 font-bold">
-            <span className="w-3 h-3 bg-indigo-900 rotate-45 rounded-2xs inline-block" />
-            <span>VASP ENDPOINT</span>
+            <span>UNKNOWN WALLET</span>
           </div>
         </div>
 
         <div className="text-[10px] text-slate-500 font-sans italic">
-          Hop sequence flows left → right • Drag to pan • Scroll to zoom
+          Hop progression left → right • Drag to pan • Scroll to zoom
         </div>
       </div>
 
       {/* SVG Canvas Area or Empty State */}
       {nodes.length === 0 ? (
-        <div className="relative min-h-[580px] h-[620px] w-full graph-canvas-bg overflow-hidden flex flex-col items-center justify-center text-center p-6">
-          <div className="bg-white border border-slate-200 p-8 rounded-xl shadow-sm max-w-md space-y-3">
+        <div className="relative min-h-[500px] h-[540px] w-full graph-canvas-bg overflow-hidden flex flex-col items-center justify-center text-center p-6">
+          <div className="bg-white border border-slate-200 p-8 rounded-xl shadow-xs max-w-md space-y-3">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
               <Layers className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 font-mono">
-              NO GRAPH PATHS AVAILABLE
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">
+              NO TRACE GRAPH LOADED
             </h3>
             <p className="text-xs text-slate-500 font-sans leading-relaxed">
-              Initiate an investigation with active multi-hop transactions to trace real fund movements visually.
+              Enter a target wallet address and run an investigation to trace real multi-hop fund movements on TRON.
             </p>
           </div>
         </div>
       ) : (
         <div
           ref={containerRef}
-          className="relative min-h-[580px] h-[620px] w-full graph-canvas-bg overflow-hidden select-none"
+          className="relative min-h-[520px] h-[560px] w-full graph-canvas-bg overflow-hidden select-none"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -519,7 +648,6 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
             className={`w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           >
             <defs>
-              {/* Active / Selected Arrow Marker */}
               <marker
                 id="arrow-active"
                 viewBox="0 0 10 10"
@@ -532,7 +660,6 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                 <path d="M 0 0 L 10 5 L 0 10 z" fill="#4338ca" />
               </marker>
 
-              {/* Inactive / Dimmed Arrow Marker */}
               <marker
                 id="arrow-inactive"
                 viewBox="0 0 10 10"
@@ -548,23 +675,44 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
 
             {/* Viewport Transform Container */}
             <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
+              {/* HOP COLUMN LABELS */}
+              {hopLevels.map((hop) => {
+                const x = hop * 280;
+                return (
+                  <g key={`hop-col-${hop}`} transform={`translate(${x}, ${graphBounds.minY + 25})`}>
+                    <rect
+                      x="-55"
+                      y="-12"
+                      width="110"
+                      height="20"
+                      rx="4"
+                      fill="#f8fafc"
+                      stroke="#cbd5e1"
+                      strokeWidth="1"
+                    />
+                    <text
+                      y="2"
+                      textAnchor="middle"
+                      className="font-mono text-[9px] font-bold fill-slate-600 tracking-wider"
+                    >
+                      {hop === 0 ? 'HOP 0 (START)' : `HOP #${hop}`}
+                    </text>
+                  </g>
+                );
+              })}
+
               {/* RENDER EDGES */}
               {edges.map((e) => {
                 const fromNode = nodes.find((n) => n.id === e.from);
                 const toNode = nodes.find((n) => n.id === e.to);
                 if (!fromNode || !toNode) return null;
 
-                // Path selection state
-                const isSelectedPath = activePathId
-                  ? e.pathIds.includes(activePathId)
-                  : true;
+                const isSelectedPath = activePathId ? e.pathIds.includes(activePathId) : true;
                 const isHovered = hoveredEdgeId === e.id;
 
-                // Edge opacity (Requirement 9: non-selected paths at ~30% opacity)
-                const opacity = isSelectedPath ? 1.0 : 0.3;
+                const opacity = isSelectedPath ? 1.0 : 0.2;
                 const strokeWidth = isSelectedPath ? 3 : 2;
 
-                // Bezier curve control points
                 const dx = toNode.x - fromNode.x;
                 const cx1 = fromNode.x + dx * 0.45;
                 const cy1 = fromNode.y;
@@ -599,7 +747,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                     className="cursor-pointer group"
                     style={{ opacity, transition: 'opacity 0.2s ease-in-out' }}
                   >
-                    {/* Transparent thick stroke for easy mouse hover targeting */}
+                    {/* Transparent hover hit target */}
                     <path
                       d={pathData}
                       fill="none"
@@ -607,7 +755,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                       strokeWidth={strokeWidth + 14}
                     />
 
-                    {/* Smooth Curved Edge Line */}
+                    {/* Curved Edge Line */}
                     <path
                       d={pathData}
                       fill="none"
@@ -617,13 +765,13 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                       markerEnd={isSelectedPath ? 'url(#arrow-active)' : 'url(#arrow-inactive)'}
                     />
 
-                    {/* EDGE AMOUNT LABEL - Default: ONLY ON HOVER OR SELECTED PATH (Requirement 11) */}
+                    {/* Edge Amount Pill */}
                     {(isSelectedPath || isHovered) && (
                       <g transform={`translate(${midX}, ${midY})`}>
                         <rect
-                          x="-36"
+                          x="-40"
                           y="-10"
-                          width="72"
+                          width="80"
                           height="20"
                           rx="4"
                           fill="#ffffff"
@@ -632,9 +780,9 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                           className="shadow-2xs"
                         />
                         <text
-                          y="3"
+                          y="3.5"
                           textAnchor="middle"
-                          className="font-mono text-[10px] font-bold fill-slate-800 tabular-nums pointer-events-none"
+                          className="font-mono text-[10px] font-bold fill-slate-900 tabular-nums pointer-events-none"
                         >
                           {formatCurrency(e.amount)}
                         </text>
@@ -653,7 +801,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                   : true;
 
                 const isHovered = hoveredNodeId === n.id;
-                const opacity = isSelectedPathNode ? 1.0 : 0.3;
+                const opacity = isSelectedPathNode ? 1.0 : 0.25;
 
                 return (
                   <g
@@ -661,26 +809,35 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                     transform={`translate(${n.x}, ${n.y})`}
                     onClick={(evt) => {
                       evt.stopPropagation();
-                      onNodeClick(n.address, n.role);
+                      onNodeClick(n.address, n.role, {
+                        address: n.address,
+                        role: n.role,
+                        label: n.label,
+                        hopLevel: n.hopLevel,
+                        entityLabel: n.entityLabel,
+                        entityRole: n.entityRole,
+                        walletStatus: n.walletStatus,
+                        isTerminal: n.role === 'VASP_ENDPOINT' || n.role === 'UNKNOWN_WALLET',
+                        vaspCandidate: n.vaspCandidate,
+                      });
                     }}
                     onMouseEnter={() => setHoveredNodeId(n.id)}
                     onMouseLeave={() => setHoveredNodeId(null)}
                     className="cursor-pointer"
                     style={{ opacity, transition: 'opacity 0.2s ease-in-out' }}
                   >
-                    {/* Node Hover Outline */}
+                    {/* Hover Glow Ring */}
                     {isHovered && (
                       <circle
-                        r="28"
+                        r="30"
                         fill="none"
                         stroke="#818cf8"
                         strokeWidth="2"
-                        strokeDasharray="3,3"
-                        className="animate-spin-slow"
+                        strokeDasharray="4,3"
                       />
                     )}
 
-                    {/* Role Geometry Rendering */}
+                    {/* STARTING WALLET */}
                     {n.role === 'STARTING' && (
                       <g>
                         <circle r="20" fill="#4338ca" stroke="#ffffff" strokeWidth="3" className="shadow-md" />
@@ -688,17 +845,40 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                       </g>
                     )}
 
-                    {n.role === 'INTERMEDIARY' && (
-                      <circle r="16" fill="#ffffff" stroke="#475569" strokeWidth="3" className="shadow-2xs" />
+                    {/* INTERMEDIATE WALLET */}
+                    {n.role === 'INTERMEDIATE' && (
+                      <circle r="17" fill="#ffffff" stroke="#475569" strokeWidth="3" className="shadow-2xs" />
                     )}
 
-                    {n.role === 'KNOWN_ENTITY' && (
+                    {/* VERIFIED VASP ENDPOINT */}
+                    {n.role === 'VASP_ENDPOINT' && (
+                      <g>
+                        <circle r="26" fill="none" stroke="#818cf8" strokeWidth="2" opacity="0.7" />
+                        <g transform="rotate(45)">
+                          <rect
+                            x="-18"
+                            y="-18"
+                            width="36"
+                            height="36"
+                            rx="5"
+                            fill="#312e81"
+                            stroke="#ffffff"
+                            strokeWidth="2.5"
+                            className="shadow-md"
+                          />
+                        </g>
+                        <ShieldCheck className="w-5 h-5 text-white absolute -top-2.5 -left-2.5" />
+                      </g>
+                    )}
+
+                    {/* NON-VASP ENTITY */}
+                    {n.role === 'NON_VASP_ENTITY' && (
                       <rect
                         x="-17"
                         y="-17"
                         width="34"
                         height="34"
-                        rx="5"
+                        rx="6"
                         fill="#0d9488"
                         stroke="#ffffff"
                         strokeWidth="2.5"
@@ -706,41 +886,40 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                       />
                     )}
 
-                    {n.role === 'TRACE_ENDPOINT' && (
+                    {/* TOKEN CONTRACT */}
+                    {n.role === 'TOKEN_CONTRACT' && (
                       <g>
                         <rect
-                          x="-16"
-                          y="-16"
-                          width="32"
-                          height="32"
-                          rx="6"
+                          x="-18"
+                          y="-18"
+                          width="36"
+                          height="36"
+                          rx="4"
+                          fill="#475569"
+                          stroke="#cbd5e1"
+                          strokeWidth="2"
+                          strokeDasharray="3,2"
+                          className="shadow-sm"
+                        />
+                        <FileCode className="w-4 h-4 text-slate-200 -top-2 -left-2" />
+                      </g>
+                    )}
+
+                    {/* UNKNOWN WALLET */}
+                    {n.role === 'UNKNOWN_WALLET' && (
+                      <g>
+                        <circle
+                          r="16"
                           fill="#fffbe6"
                           stroke="#d97706"
-                          strokeWidth="2.5"
+                          strokeWidth="2"
                           strokeDasharray="4,2"
-                          className="shadow-sm"
                         />
                         <circle r="4" fill="#d97706" />
                       </g>
                     )}
 
-                    {n.role === 'VASP_ENDPOINT' && (
-                      <g transform="rotate(45)">
-                        <rect
-                          x="-17"
-                          y="-17"
-                          width="34"
-                          height="34"
-                          rx="4"
-                          fill="#312e81"
-                          stroke="#ffffff"
-                          strokeWidth="2.5"
-                          className="shadow-md"
-                        />
-                      </g>
-                    )}
-
-                    {/* Compact Truncated Address Label (Requirement 12) */}
+                    {/* Truncated Address Label */}
                     <text
                       y="34"
                       textAnchor="middle"
@@ -749,34 +928,38 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                       {n.label}
                     </text>
 
-                    {/* Role Pill Beneath */}
-                    <g transform="translate(0, 40)">
+                    {/* Role Status Pill */}
+                    <g transform="translate(0, 42)">
                       <rect
-                        x="-48"
+                        x="-52"
                         y="0"
-                        width="96"
+                        width="104"
                         height="16"
                         rx="3"
                         fill={
                           n.role === 'VASP_ENDPOINT'
                             ? '#e0e7ff'
-                            : n.role === 'TRACE_ENDPOINT'
-                            ? '#fef3c7'
-                            : n.role === 'KNOWN_ENTITY'
+                            : n.role === 'TOKEN_CONTRACT'
+                            ? '#f1f5f9'
+                            : n.role === 'NON_VASP_ENTITY'
                             ? '#ccfbf1'
                             : n.role === 'STARTING'
                             ? '#e0e7ff'
-                            : '#f1f5f9'
+                            : n.role === 'UNKNOWN_WALLET'
+                            ? '#fef3c7'
+                            : '#f8fafc'
                         }
                         stroke={
                           n.role === 'VASP_ENDPOINT'
                             ? '#818cf8'
-                            : n.role === 'TRACE_ENDPOINT'
-                            ? '#f59e0b'
-                            : n.role === 'KNOWN_ENTITY'
+                            : n.role === 'TOKEN_CONTRACT'
+                            ? '#94a3b8'
+                            : n.role === 'NON_VASP_ENTITY'
                             ? '#2dd4bf'
                             : n.role === 'STARTING'
                             ? '#818cf8'
+                            : n.role === 'UNKNOWN_WALLET'
+                            ? '#f59e0b'
                             : '#cbd5e1'
                         }
                         strokeWidth="1"
@@ -787,24 +970,20 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                         className={`font-sans text-[9px] font-bold uppercase tracking-wider ${
                           n.role === 'VASP_ENDPOINT'
                             ? 'fill-indigo-900'
-                            : n.role === 'TRACE_ENDPOINT'
-                            ? 'fill-amber-900'
-                            : n.role === 'KNOWN_ENTITY'
+                            : n.role === 'TOKEN_CONTRACT'
+                            ? 'fill-slate-800'
+                            : n.role === 'NON_VASP_ENTITY'
                             ? 'fill-teal-900'
                             : n.role === 'STARTING'
                             ? 'fill-indigo-900'
+                            : n.role === 'UNKNOWN_WALLET'
+                            ? 'fill-amber-900'
                             : 'fill-slate-700'
                         }`}
                       >
-                        {n.vaspName
-                          ? n.vaspName.substring(0, 13)
-                          : n.role === 'TRACE_ENDPOINT'
-                          ? 'TRACE ENDPOINT'
-                          : n.role === 'STARTING'
-                          ? 'STARTING WALLET'
-                          : n.role === 'KNOWN_ENTITY'
-                          ? 'KNOWN ENTITY'
-                          : n.role}
+                        {n.entityLabel
+                          ? n.entityLabel.substring(0, 14)
+                          : n.walletStatus.substring(0, 14)}
                       </text>
                     </g>
                   </g>
@@ -813,7 +992,7 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
             </g>
           </svg>
 
-          {/* Interactive Edge Hover Tooltip (Requirement 11 Detail) */}
+          {/* Interactive Edge Hover Tooltip */}
           {hoveredEdgeId && tooltipPos && (() => {
             const edge = edges.find((e) => e.id === hoveredEdgeId);
             if (!edge) return null;
@@ -840,10 +1019,12 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
                     <span>{edge.hop.timestamp ? new Date(edge.hop.timestamp).toUTCString() : 'N/A'}</span>
                   </div>
 
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-slate-400 font-bold">TRANSFER GAP:</span>
-                    <span>{formatTimeInterval(edge.hop.delta_t_seconds)}</span>
-                  </div>
+                  {edge.hop.delta_t_seconds !== null && edge.hop.delta_t_seconds !== undefined && edge.hop.delta_t_seconds > 0 && (
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-slate-400 font-bold">INTERVAL (Δt):</span>
+                      <span>{formatTimeInterval(edge.hop.delta_t_seconds)}</span>
+                    </div>
+                  )}
 
                   <div className="flex items-center space-x-1.5 truncate">
                     <Hash className="w-3 h-3 text-slate-400 flex-shrink-0" />
@@ -865,15 +1046,14 @@ export const FundFlowGraph: React.FC<FundFlowGraphProps> = ({
       <div className="px-6 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-500 font-sans gap-2">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-          <span>Click any graph node or edge to inspect verifiable evidence in drawer.</span>
+          <span>Click any node or transaction edge to inspect in the Inspector below.</span>
         </div>
         <div className="font-mono text-slate-400 text-[11px] flex items-center space-x-3">
-          <span>FIT AUTO-COMPUTED</span>
+          <span>LEFT-TO-RIGHT HOP PROGRESSION</span>
           <span>•</span>
-          <span>SPATIAL STABILITY: ACTIVE</span>
+          <span>DRAG TO PAN • SCROLL TO ZOOM</span>
         </div>
       </div>
     </div>
   );
 };
-

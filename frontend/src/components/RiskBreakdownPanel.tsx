@@ -63,10 +63,10 @@ export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData
               Risk Level Summary
             </div>
 
-            {/* Adjusted Risk Level (Primary) */}
+            {/* Contextual Risk Score */}
             <div>
               <div className="flex justify-between items-baseline mb-1">
-                <span className="text-xs font-sans font-medium text-slate-700">Adjusted Risk Level:</span>
+                <span className="text-xs font-sans font-medium text-slate-700">CONTEXTUAL RISK:</span>
                 <span className="font-mono text-xl font-bold text-[#3730A3] tabular-nums">
                   {contextualScore.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 100</span>
                 </span>
@@ -79,10 +79,10 @@ export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData
               </div>
             </div>
 
-            {/* Base Suspicion Score */}
+            {/* Base Flow / Structural Risk Score */}
             <div className="pt-2 border-t border-slate-200">
               <div className="flex justify-between items-baseline mb-1">
-                <span className="text-xs font-sans font-medium text-slate-600">Base Suspicion Score:</span>
+                <span className="text-xs font-sans font-medium text-slate-600">FLOW RISK / STRUCTURAL RISK:</span>
                 <span className="font-mono text-sm font-bold text-slate-700 tabular-nums">
                   {rawScore.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 100</span>
                 </span>
@@ -95,18 +95,22 @@ export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData
               </div>
             </div>
 
-            {/* Known Organization / Service Context Flag */}
+            {/* Entity Context Flag */}
             <div className="pt-2 flex items-center justify-between text-xs font-sans">
-              <span className="text-slate-600 font-medium">Known Service Context:</span>
+              <span className="text-slate-600 font-medium">ENTITY CONTEXT:</span>
               <span
                 className={`font-semibold text-[11px] px-2 py-0.5 rounded border ${
                   isServiceEntity
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
                     : 'bg-slate-200/60 text-slate-700 border-slate-300'
                 }`}
               >
-                {isServiceEntity ? 'YES (RISK REDUCED)' : 'NO'}
+                {isServiceEntity ? 'Verified VASP endpoint' : 'Unverified / Private wallet'}
               </span>
+            </div>
+
+            <div className="pt-2 text-[11px] text-slate-500 font-sans leading-relaxed border-t border-slate-200">
+              Note: High structural flow indicators remain evidentiary; verified VASP context affects contextual risk assessment without implying transactions are lawful.
             </div>
           </div>
         </div>
@@ -183,16 +187,16 @@ export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData
             {showTechnicalDetails && (
               <div className="mt-3 bg-white p-4 rounded-md border border-slate-200 text-xs text-slate-700 space-y-2 font-sans">
                 <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                  <span className="text-slate-500 font-sans">RAW UNMITIGATED STRUCTURAL SCORE:</span>
-                  <span className="font-mono font-bold text-slate-900">{rawScore.toFixed(2)}</span>
+                  <span className="text-slate-500 font-sans">FLOW RISK / STRUCTURAL RISK:</span>
+                  <span className="font-mono font-bold text-slate-900">{rawScore.toFixed(2)} / 100</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                  <span className="text-slate-500 font-sans">FINAL CONTEXTUAL SCORE:</span>
-                  <span className="font-mono font-bold text-[#3730A3]">{contextualScore.toFixed(2)}</span>
+                  <span className="text-slate-500 font-sans">CONTEXTUAL RISK:</span>
+                  <span className="font-mono font-bold text-[#3730A3]">{contextualScore.toFixed(2)} / 100</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500 font-sans">IS SERVICE ENTITY:</span>
-                  <span className="font-mono font-bold text-slate-900">{isServiceEntity ? 'TRUE' : 'FALSE'}</span>
+                  <span className="text-slate-500 font-sans">ENTITY CONTEXT:</span>
+                  <span className="font-mono font-bold text-slate-900">{isServiceEntity ? 'Verified VASP endpoint' : 'Unverified / Private wallet'}</span>
                 </div>
               </div>
             )}

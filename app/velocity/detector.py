@@ -24,15 +24,17 @@ class VelocityMetrics:
         transfer_count: int,
         total_amount: float,
         duration_seconds: float,
-        minimum_delta_t: float,
-        average_delta_t: float,
-        maximum_delta_t: float,
+        minimum_delta_t: Optional[float],
+        average_delta_t: Optional[float],
+        maximum_delta_t: Optional[float],
         unique_recipients: int,
         downstream_hops: int,
         supporting_transactions: List[str],
         supporting_wallets: List[str],
         rolling_windows: Dict[str, RollingWindowMetric],
         delta_ts: List[float],
+        initial_transfer_amount: float = 0.0,
+        downstream_activity_amount: float = 0.0,
     ):
         self.transfer_count = transfer_count
         self.total_amount = total_amount
@@ -46,6 +48,8 @@ class VelocityMetrics:
         self.supporting_wallets = supporting_wallets
         self.rolling_windows = rolling_windows
         self.delta_ts = delta_ts
+        self.initial_transfer_amount = initial_transfer_amount
+        self.downstream_activity_amount = downstream_activity_amount
 
 
 class VelocityDetector:
@@ -76,15 +80,17 @@ class VelocityDetector:
                 transfer_count=0,
                 total_amount=0.0,
                 duration_seconds=0.0,
-                minimum_delta_t=0.0,
-                average_delta_t=0.0,
-                maximum_delta_t=0.0,
+                minimum_delta_t=None,
+                average_delta_t=None,
+                maximum_delta_t=None,
                 unique_recipients=0,
                 downstream_hops=0,
                 supporting_transactions=[],
                 supporting_wallets=[],
                 rolling_windows=self._empty_rolling_windows(),
                 delta_ts=[],
+                initial_transfer_amount=0.0,
+                downstream_activity_amount=0.0,
             )
 
         total_amount = sum(h.amount for h in unique_hops)
@@ -96,25 +102,37 @@ class VelocityDetector:
             wallets_set.add(h.from_address)
             wallets_set.add(h.to_address)
 
-        # Calculate time gaps (delta_t)
-        delta_ts: List[float] = []
-        for i in range(1, len(unique_hops)):
-            gap = (unique_hops[i].timestamp - unique_hops[i - 1].timestamp).total_seconds()
-            delta_ts.append(max(0.0, gap))
+        # Separate initial transfers from starting wallet from downstream activity
+        starting_wallet_clean = (trace_result.starting_wallet or "").strip().upper()
+        initial_hops = [h for h in unique_hops if h.from_address.strip().upper() == starting_wallet_clean]
+        downstream_hops_list = [h for h in unique_hops if h.from_address.strip().upper() != starting_wallet_clean]
 
-        # Calculate duration
-        start_ts = unique_hops[0].timestamp
-        end_ts = unique_hops[-1].timestamp
-        duration_seconds = max(0.0, (end_ts - start_ts).total_seconds())
-
-        if delta_ts:
-            min_delta = min(delta_ts)
-            max_delta = max(delta_ts)
-            avg_delta = sum(delta_ts) / len(delta_ts)
+        if initial_hops:
+            initial_transfer_amount = sum(h.amount for h in initial_hops)
+            downstream_activity_amount = sum(h.amount for h in downstream_hops_list)
         else:
-            min_delta = 0.0
-            max_delta = 0.0
-            avg_delta = 0.0
+            initial_transfer_amount = unique_hops[0].amount
+            downstream_activity_amount = sum(h.amount for h in unique_hops[1:]) if len(unique_hops) > 1 else 0.0
+
+        # Calculate time gaps (delta_t) only across sequential transfers (>= 2 transfers)
+        delta_ts: List[float] = []
+        if len(unique_hops) >= 2:
+            for i in range(1, len(unique_hops)):
+                gap = (unique_hops[i].timestamp - unique_hops[i - 1].timestamp).total_seconds()
+                delta_ts.append(max(0.0, gap))
+
+            start_ts = unique_hops[0].timestamp
+            end_ts = unique_hops[-1].timestamp
+            duration_seconds = max(0.0, (end_ts - start_ts).total_seconds())
+
+            min_delta = round(min(delta_ts), 2) if delta_ts else None
+            max_delta = round(max(delta_ts), 2) if delta_ts else None
+            avg_delta = round(sum(delta_ts) / len(delta_ts), 2) if delta_ts else None
+        else:
+            duration_seconds = 0.0
+            min_delta = None
+            max_delta = None
+            avg_delta = None
 
         max_hops = max([p.hop_count for p in trace_result.paths], default=0)
 
@@ -125,15 +143,17 @@ class VelocityDetector:
             transfer_count=transfer_count,
             total_amount=round(total_amount, 2),
             duration_seconds=round(duration_seconds, 2),
-            minimum_delta_t=round(min_delta, 2),
-            average_delta_t=round(avg_delta, 2),
-            maximum_delta_t=round(max_delta, 2),
+            minimum_delta_t=min_delta,
+            average_delta_t=avg_delta,
+            maximum_delta_t=max_delta,
             unique_recipients=len(recipients_set),
             downstream_hops=max_hops,
             supporting_transactions=tx_hashes,
             supporting_wallets=list(wallets_set),
             rolling_windows=rolling_windows,
             delta_ts=delta_ts,
+            initial_transfer_amount=round(initial_transfer_amount, 2),
+            downstream_activity_amount=round(downstream_activity_amount, 2),
         )
 
     def calculate_rolling_windows(

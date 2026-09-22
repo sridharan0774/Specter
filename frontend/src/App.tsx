@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { InvestigationInput } from './components/InvestigationInput';
-import { PrimaryResultReveal } from './components/PrimaryResultReveal';
-import { SuspiciousAlertsBanner } from './components/SuspiciousAlertsBanner';
+import { InvestigationStatusBar } from './components/InvestigationStatusBar';
 import { FundFlowGraph } from './components/FundFlowGraph';
+import { SelectedInspector } from './components/SelectedInspector';
 import { PathExplorer } from './components/PathExplorer';
 import { VaspAttributionCard } from './components/VaspAttributionCard';
 import { RiskBreakdownPanel } from './components/RiskBreakdownPanel';
@@ -13,7 +13,9 @@ import { EvidenceExplorer } from './components/EvidenceExplorer';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
 import { TransactionDrawer } from './components/TransactionDrawer';
 import { ReportsExportPanel } from './components/ReportsExportPanel';
+import { SahyogActionCenter } from './components/SahyogActionCenter';
 import { AlertTriangle, RefreshCw, Layers } from 'lucide-react';
+
 
 import type {
   FullInvestigationDataset,
@@ -21,6 +23,7 @@ import type {
   InvestigationJobResponse,
   EvidenceGraphItemSchema,
   TraceHopItem,
+  GraphNodeDetail,
 } from './types/api';
 
 import { apiService } from './services/api';
@@ -41,8 +44,7 @@ export function App() {
   const [selectedPathId, setSelectedPathId] = useState<string>('');
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceGraphItemSchema | null>(null);
   const [selectedHop, setSelectedHop] = useState<TraceHopItem | null>(null);
-  const [selectedNodeAddress, setSelectedNodeAddress] = useState<string | null>(null);
-  const [selectedNodeRole, setSelectedNodeRole] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNodeDetail | null>(null);
 
   // Check Backend Health on Mount
   useEffect(() => {
@@ -65,7 +67,7 @@ export function App() {
     setIsLiveMode(live);
     setApiError(null);
     if (!live) {
-      // Switched to Demo Mode -> Load Fixture Data
+      // Switched to Demo Mode -> Load Benchmark Fixture Data
       setDataset(MOCK_INVESTIGATION_DATASET);
       setCaseId(SAMPLE_CASE_ID);
       setSelectedPathId(MOCK_INVESTIGATION_DATASET.trace_result?.paths?.[0]?.path_id || '');
@@ -75,22 +77,29 @@ export function App() {
         setDataset(null);
         setCaseId('');
         setSelectedPathId('');
+        setSelectedNode(null);
+        setSelectedHop(null);
       }
     }
   };
 
   // Handle Starting Investigation
-  const handleStartInvestigation = async (req: InvestigationStartRequest) => {
+  const handleStartInvestigation = async (req: InvestigationStartRequest, customCaseId?: string) => {
     setIsLoading(true);
     setJobStatus(null);
     setApiError(null);
     setLastRequest(req);
+    setSelectedNode(null);
+    setSelectedHop(null);
+
+    const effCaseId = customCaseId || caseId || `case-${req.wallet.substring(0, 8)}`;
+    setCaseId(effCaseId);
 
     if (!isLiveMode) {
       // Demo Mode Execution (Simulated local fixture output)
       setJobStatus({
         job_id: 'job-demo-112',
-        case_id: req.wallet ? `case-${req.wallet.substring(0, 8)}` : SAMPLE_CASE_ID,
+        case_id: effCaseId,
         target_wallet: req.wallet,
         chain: req.chain || 'TRON',
         asset: req.asset || 'USDT',
@@ -103,7 +112,7 @@ export function App() {
       setTimeout(() => {
         setJobStatus({
           job_id: 'job-demo-112',
-          case_id: req.wallet ? `case-${req.wallet.substring(0, 8)}` : SAMPLE_CASE_ID,
+          case_id: effCaseId,
           target_wallet: req.wallet,
           chain: req.chain || 'TRON',
           asset: req.asset || 'USDT',
@@ -118,14 +127,14 @@ export function App() {
           ...MOCK_INVESTIGATION_DATASET,
           summary: {
             ...MOCK_INVESTIGATION_DATASET.summary,
+            case_id: effCaseId,
             target_wallet: req.wallet,
           },
         };
         setDataset(demoData);
-        setCaseId(`case-${req.wallet.substring(0, 8)}`);
         setSelectedPathId(demoData.trace_result?.paths?.[0]?.path_id || '');
         setIsLoading(false);
-      }, 1200);
+      }, 1000);
       return;
     }
 
@@ -136,14 +145,15 @@ export function App() {
         target_wallet: req.wallet,
         chain: req.chain || 'TRON',
         asset: req.asset || 'USDT',
-        investigator_id: req.investigator_id,
+        investigator_id: req.investigator_id || 'INV-OFFICER-001',
         description: req.description,
       });
 
-      setCaseId(caseRes.case_id);
+      const actualCaseId = caseRes.case_id || effCaseId;
+      setCaseId(actualCaseId);
 
       // 2. Trigger Investigation Job
-      const jobRes = await apiService.startInvestigation(caseRes.case_id, {
+      const jobRes = await apiService.startInvestigation(actualCaseId, {
         wallet: req.wallet,
         chain: req.chain || 'TRON',
         asset: req.asset || 'USDT',
@@ -156,26 +166,29 @@ export function App() {
       setJobStatus(jobRes);
 
       // 3. Poll until completed
-      const finalJob = await apiService.pollJobUntilComplete(caseRes.case_id, (update: InvestigationJobResponse) => {
+      const finalJob = await apiService.pollJobUntilComplete(actualCaseId, (update: InvestigationJobResponse) => {
         setJobStatus(update);
       });
 
       if (finalJob.status === 'COMPLETED') {
-        // Fetch full dataset from backend
-        const full = await apiService.getFullInvestigationDataset(caseRes.case_id);
+        // Fetch full consolidated dataset from backend
+        const full = await apiService.getFullInvestigationDataset(actualCaseId);
         setDataset(full);
         if (full.trace_result?.paths?.[0]?.path_id) {
           setSelectedPathId(full.trace_result.paths[0].path_id);
         }
       } else if (finalJob.status === 'FAILED') {
-        setApiError(`Investigation job failed on stage ${finalJob.current_stage}: ${finalJob.error_message || 'Backend processing error'}`);
+        setApiError(
+          `Investigation job failed at stage ${finalJob.current_stage}: ${
+            finalJob.error_message || 'Blockchain provider returned insufficient data or error.'
+          }`
+        );
       }
     } catch (err: any) {
       console.error('Live investigation request failed:', err);
       setApiError(
         err?.message || 'LIVE BACKEND UNAVAILABLE: Failed to complete real-time investigation via backend REST API.'
       );
-      // STRICT REQUIREMENT: NEVER fallback to mock data on error during Live Mode
     } finally {
       setIsLoading(false);
     }
@@ -187,6 +200,8 @@ export function App() {
     setCaseId(SAMPLE_CASE_ID);
     setApiError(null);
     setSelectedPathId(MOCK_INVESTIGATION_DATASET.trace_result?.paths?.[0]?.path_id || '');
+    setSelectedNode(null);
+    setSelectedHop(null);
     setJobStatus({
       job_id: 'job-inv-883192',
       case_id: SAMPLE_CASE_ID,
@@ -213,31 +228,33 @@ export function App() {
         healthStatus={healthStatus}
       />
 
-      {/* Live vs Demo Status Indicator Sub-Header */}
-      <div className={`px-6 py-2 border-b text-xs font-mono flex items-center justify-between transition-colors ${
-        isLiveMode
-          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-          : 'bg-amber-50 text-amber-900 border-amber-200'
-      }`}>
+      {/* Mode Status Sub-Header */}
+      <div
+        className={`px-6 py-2 border-b text-xs font-mono flex items-center justify-between transition-colors ${
+          isLiveMode
+            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+            : 'bg-amber-50 text-amber-900 border-amber-200'
+        }`}
+      >
         <div className="max-w-[1440px] w-full mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <span className={`w-2 h-2 rounded-full ${isLiveMode ? 'bg-emerald-600 animate-pulse' : 'bg-amber-600'}`} />
             <span className="font-bold uppercase tracking-wider">
-              {isLiveMode ? 'LIVE BLOCKCHAIN DATA MODE' : 'DEMO / FIXTURE DATASET MODE'}
+              {isLiveMode ? 'LIVE BLOCKCHAIN DATA MODE' : 'BENCHMARK CASE / DEMO MODE'}
             </span>
             <span className="text-[11px] opacity-80">
-              — {isLiveMode ? 'Executing direct backend REST queries against TRON mainnet' : 'Operating on static fixture dataset'}
+              — {isLiveMode ? 'Real-time REST queries against TRON Mainnet' : 'Verified SIH forensic ground-truth case'}
             </span>
           </div>
 
           <div className="text-[11px]">
             {isLiveMode ? (
               <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded border border-emerald-300 font-semibold">
-                STRICT LIVE MODE (NO MOCK FALLBACK)
+                STRICT LIVE MODE (NO FABRICATED DATA)
               </span>
             ) : (
               <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-300 font-semibold">
-                DEMO BENCHMARK DATASET
+                SIH BENCHMARK CASE
               </span>
             )}
           </div>
@@ -253,7 +270,7 @@ export function App() {
               <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <h3 className="text-xs font-bold uppercase tracking-wider font-mono text-red-800">
-                  LIVE BACKEND UNAVAILABLE
+                  INVESTIGATION ALERT / BACKEND NOTICE
                 </h3>
                 <p className="text-xs text-red-700 font-sans">{apiError}</p>
               </div>
@@ -262,7 +279,7 @@ export function App() {
             <div className="flex items-center space-x-3 pt-1 border-t border-red-200 font-mono text-xs">
               {lastRequest && (
                 <button
-                  onClick={() => handleStartInvestigation(lastRequest)}
+                  onClick={() => handleStartInvestigation(lastRequest, caseId)}
                   className="flex items-center space-x-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -274,84 +291,178 @@ export function App() {
                 className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded transition-colors"
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>SWITCH TO DEMO MODE</span>
+                <span>LOAD BENCHMARK CASE</span>
               </button>
             </div>
           </div>
         )}
 
-        {/* Workspace Tab 1: INVESTIGATION (Main Landing Workspace) */}
+        {/* WORKSPACE TAB 1: CENTRAL INVESTIGATION WORKSPACE */}
         {activeTab === 'investigation' && (
           <div className="space-y-6">
+            {/* STEP 1: Case Setup & Parameters Input */}
             <InvestigationInput
               onStartInvestigation={handleStartInvestigation}
               isLoading={isLoading}
               jobStatus={jobStatus}
               onLoadSample={handleLoadSample}
+              currentCaseId={caseId}
             />
 
-            {dataset && (
-              <>
-                {/* 1. Primary Conclusion & Highest-Confidence VASP Reveal */}
-                <PrimaryResultReveal
-                  summary={dataset.summary}
-                  vaspData={dataset.vasp_attribution}
-                  riskData={dataset.risk_indicator}
-                  onNavigateToTab={setActiveTab}
-                />
+            {/* STEP 2: Compact Investigation Summary Status Bar */}
+            <InvestigationStatusBar
+              summary={dataset?.summary}
+              traceData={dataset?.trace_result}
+              vaspData={dataset?.vasp_attribution}
+              caseId={caseId || jobStatus?.case_id}
+              maxHops={lastRequest?.max_hops || 2}
+              status={jobStatus?.status || (dataset ? 'COMPLETED' : 'READY')}
+            />
 
-                {/* 2. Compact Suspicious Movement Alerts (Velocity & Typology) */}
-                <SuspiciousAlertsBanner
-                  velocityData={dataset.velocity_analysis}
-                  typologyData={dataset.typology_analysis}
-                  onViewTrace={() => setActiveTab('fundflow')}
-                />
-
-                {/* 3. Ranked Trace Path Cards Preview */}
-                <PathExplorer
-                  paths={dataset.trace_result?.paths || []}
-                  selectedPathId={selectedPathId}
-                  onSelectPath={setSelectedPathId}
-                  onNavigateToGraph={() => setActiveTab('fundflow')}
-                />
-
-                {/* 4. Hierarchical Fund Flow Visualizer */}
-                <FundFlowGraph
-                  traceData={dataset.trace_result}
-                  vaspData={dataset.vasp_attribution}
-                  selectedPathId={selectedPathId}
-                  onSelectPath={setSelectedPathId}
-                  onNodeClick={(addr, role) => {
-                    setSelectedNodeAddress(addr);
-                    setSelectedNodeRole(role);
-                    setSelectedHop(null);
-                  }}
-                  onEdgeClick={(hop) => {
-                    setSelectedHop(hop);
-                    setSelectedNodeAddress(null);
-                  }}
-                />
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Workspace Tab 2: FUND FLOW */}
-        {activeTab === 'fundflow' && (
-          <div className="space-y-6">
+            {/* STEP 3: Fund Flow Graph — The Central Workspace */}
             <FundFlowGraph
               traceData={dataset?.trace_result}
               vaspData={dataset?.vasp_attribution}
               selectedPathId={selectedPathId}
               onSelectPath={setSelectedPathId}
-              onNodeClick={(addr, role) => {
-                setSelectedNodeAddress(addr);
-                setSelectedNodeRole(role);
+              onNodeClick={(_addr, _role, detail) => {
+                setSelectedNode(detail);
                 setSelectedHop(null);
               }}
               onEdgeClick={(hop) => {
                 setSelectedHop(hop);
-                setSelectedNodeAddress(null);
+                setSelectedNode(null);
+              }}
+            />
+
+            {/* STEP 4: Selected Node / Transaction Forensic Inspector */}
+            <SelectedInspector
+              selectedNode={selectedNode}
+              selectedHop={selectedHop}
+              onClearSelection={() => {
+                setSelectedNode(null);
+                setSelectedHop(null);
+              }}
+              onNavigateToAttribution={() => {
+                const el = document.getElementById('section-vasp-attribution');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              onNavigateToEvidence={() => {
+                const el = document.getElementById('section-forensic-evidence');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+            />
+
+            {/* STEP 5: VASP Attribution Resolution Section */}
+            {dataset?.vasp_attribution && (
+              <div id="section-vasp-attribution" className="space-y-3 pt-2">
+                <div className="border-b border-slate-200 pb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">
+                    VASP ATTRIBUTION & CUSTODIAL ENDPOINT RESOLUTION
+                  </h3>
+                  <p className="text-xs text-slate-500 font-sans">
+                    Probabilistic, source-backed custodial service attribution with confidence breakdown and audited factual justification.
+                  </p>
+                </div>
+                <VaspAttributionCard
+                  vaspData={dataset.vasp_attribution}
+                  onSelectNode={(addr) => {
+                    const cand = dataset.vasp_attribution.candidates?.find(
+                      (c) => c.endpoint_address.toUpperCase() === addr.toUpperCase()
+                    );
+                    setSelectedNode({
+                      address: addr,
+                      role: 'VASP_ENDPOINT',
+                      label: `${addr.substring(0, 4)}...${addr.substring(addr.length - 4)}`,
+                      hopLevel: cand?.endpoint_hop_distance || 1,
+                      entityLabel: cand?.candidate_name,
+                      entityRole: cand?.entity_role,
+                      walletStatus: 'Verified VASP Endpoint',
+                      isTerminal: true,
+                      vaspCandidate: cand,
+                    });
+                    setSelectedHop(null);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* STEP 6: Forensic Evidence Ledger Section */}
+            {dataset?.evidence && dataset.evidence.length > 0 && (
+              <div id="section-forensic-evidence" className="space-y-3 pt-2">
+                <div className="border-b border-slate-200 pb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">
+                    FORENSIC EVIDENCE LEDGER
+                  </h3>
+                  <p className="text-xs text-slate-500 font-sans">
+                    Verifiable on-chain transfer hashes, entity intelligence provenance, and derived analysis records.
+                  </p>
+                </div>
+                <EvidenceExplorer
+                  evidenceList={dataset.evidence}
+                  onSelectEvidence={(item) => setSelectedEvidence(item)}
+                />
+              </div>
+            )}
+
+            {/* STEP 7: SAHYOG Action Center & Legal Enforcement Section */}
+            {dataset && (
+              <div id="section-sahyog-action-center" className="pt-2">
+                <SahyogActionCenter dataset={dataset} />
+              </div>
+            )}
+
+            {/* STEP 8: Reports & Export Package Section */}
+            {dataset && (
+              <div id="section-reports-export" className="space-y-3 pt-2">
+                <div className="border-b border-slate-200 pb-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">
+                    INVESTIGATION EXPORT & REPORT GENERATION
+                  </h3>
+                  <p className="text-xs text-slate-500 font-sans">
+                    Generate audit-ready PDF intelligence report, CSV forensic datasets, and SAHYOG-ready structured package.
+                  </p>
+                </div>
+                <ReportsExportPanel caseId={caseId} isLiveMode={isLiveMode} />
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* WORKSPACE TAB 2: FUND FLOW GRAPH ONLY */}
+        {activeTab === 'fundflow' && (
+          <div className="space-y-6">
+            <InvestigationStatusBar
+              summary={dataset?.summary}
+              traceData={dataset?.trace_result}
+              vaspData={dataset?.vasp_attribution}
+              caseId={caseId || jobStatus?.case_id}
+              maxHops={lastRequest?.max_hops || 2}
+              status={jobStatus?.status || (dataset ? 'COMPLETED' : 'READY')}
+            />
+
+            <FundFlowGraph
+              traceData={dataset?.trace_result}
+              vaspData={dataset?.vasp_attribution}
+              selectedPathId={selectedPathId}
+              onSelectPath={setSelectedPathId}
+              onNodeClick={(_addr, _role, detail) => {
+                setSelectedNode(detail);
+                setSelectedHop(null);
+              }}
+              onEdgeClick={(hop) => {
+                setSelectedHop(hop);
+                setSelectedNode(null);
+              }}
+            />
+
+            <SelectedInspector
+              selectedNode={selectedNode}
+              selectedHop={selectedHop}
+              onClearSelection={() => {
+                setSelectedNode(null);
+                setSelectedHop(null);
               }}
             />
 
@@ -363,7 +474,7 @@ export function App() {
           </div>
         )}
 
-        {/* Workspace Tab 3: INTELLIGENCE */}
+        {/* WORKSPACE TAB 3: INTELLIGENCE & PATTERN ANALYTICS */}
         {activeTab === 'intelligence' && dataset && (
           <div className="space-y-6">
             <div className="border-b border-slate-200 pb-3 mb-2">
@@ -379,8 +490,22 @@ export function App() {
             <VaspAttributionCard
               vaspData={dataset.vasp_attribution}
               onSelectNode={(addr) => {
-                setSelectedNodeAddress(addr);
-                setSelectedNodeRole('VASP_ENDPOINT');
+                const cand = dataset.vasp_attribution?.candidates?.find(
+                  (c) => c.endpoint_address.toUpperCase() === addr.toUpperCase()
+                );
+                setSelectedNode({
+                  address: addr,
+                  role: 'VASP_ENDPOINT',
+                  label: `${addr.substring(0, 4)}...${addr.substring(addr.length - 4)}`,
+                  hopLevel: cand?.endpoint_hop_distance || 1,
+                  entityLabel: cand?.candidate_name,
+                  entityRole: cand?.entity_role,
+                  walletStatus: 'Verified VASP Endpoint',
+                  isTerminal: true,
+                  vaspCandidate: cand,
+                });
+                setSelectedHop(null);
+                setActiveTab('investigation');
               }}
             />
 
@@ -393,7 +518,7 @@ export function App() {
           </div>
         )}
 
-        {/* Workspace Tab 4: EVIDENCE */}
+        {/* WORKSPACE TAB 4: FORENSIC EVIDENCE */}
         {activeTab === 'evidence' && dataset && (
           <EvidenceExplorer
             evidenceList={dataset.evidence || []}
@@ -401,7 +526,7 @@ export function App() {
           />
         )}
 
-        {/* Workspace Tab 5: REPORTS & EXPORTS */}
+        {/* WORKSPACE TAB 5: REPORTS & EXPORTS */}
         {activeTab === 'reports' && (
           <ReportsExportPanel caseId={caseId} isLiveMode={isLiveMode} />
         )}
@@ -412,12 +537,11 @@ export function App() {
 
       <TransactionDrawer
         hop={selectedHop}
-        nodeAddress={selectedNodeAddress}
-        nodeRole={selectedNodeRole}
+        nodeAddress={selectedNode?.address}
+        nodeRole={selectedNode?.role}
         onClose={() => {
           setSelectedHop(null);
-          setSelectedNodeAddress(null);
-          setSelectedNodeRole(null);
+          setSelectedNode(null);
         }}
       />
 

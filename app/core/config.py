@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     ETHERSCAN_API_KEY: Optional[str] = os.getenv("ETHERSCAN_API_KEY", None)
     POLYGONSCAN_API_KEY: Optional[str] = os.getenv("POLYGONSCAN_API_KEY", None)
     BSCSCAN_API_KEY: Optional[str] = os.getenv("BSCSCAN_API_KEY", None)
+    MEMPOOL_API_URL: Optional[str] = os.getenv("MEMPOOL_API_URL", "https://mempool.space/api")
+    SOLANA_RPC_URL: Optional[str] = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+    SOLSCAN_API_KEY: Optional[str] = os.getenv("SOLSCAN_API_KEY", None)
+
     
     # Operational configuration
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

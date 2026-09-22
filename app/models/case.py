@@ -23,3 +23,5 @@ class Case(Base, TimestampMixin):
     alerts = relationship("Alert", back_populates="case", cascade="all, delete-orphan")
     vasp_candidates = relationship("VASPCandidate", back_populates="case", cascade="all, delete-orphan")
     vasp_attributions = relationship("VASPAttribution", back_populates="case", cascade="all, delete-orphan")
+    sahyog_requests = relationship("SahyogRequest", back_populates="case", cascade="all, delete-orphan")
+
