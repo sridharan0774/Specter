@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "SPECTER — Blockchain Intelligence & VASP Attribution Engine"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
-    
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    FRONTEND_URLS: str = os.getenv("FRONTEND_URLS", "http://localhost:3000")
     # Database configuration
     # Default to local SQLite for rapid execution/testing; configurable to PostgreSQL
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./specter.db")

@@ -13,7 +13,9 @@ import type {
 } from '../types/api';
 
 
-const API_BASE = '/api/v1';
+const API_BASE = (
+  import.meta.env.VITE_API_BASE_URL || '/api/v1'
+).replace(/\/$/, '');
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
