@@ -49,12 +49,18 @@ class EvidenceBuilder:
         risk_ev_id = f"ev-risk-{uuid.uuid4().hex[:8]}"
 
         risk_src = source_registry.get_source("SRC_SPECTER_RISK_ENGINE")
+        if risk_resp and risk_resp.risk_score is not None:
+            finding_text = f"Transaction-Flow Risk Indicator assessed at {risk_resp.risk_score:.1f}/100 ({risk_resp.risk_level} risk level). Raw structural score: {(risk_resp.raw_risk_score or 0.0):.1f}/100."
+        else:
+            finding_text = "Transaction-Flow Risk Indicator assessment status: INSUFFICIENT_EVIDENCE (Insufficient transaction history available)."
+
         risk_ev = EvidenceGraphItemSchema(
             evidence_id=risk_ev_id,
             finding_id=risk_fnd_id,
             case_id=case_id,
             evidence_type="RISK_INDICATOR_ASSESSMENT",
-            finding=f"Transaction-Flow Risk Indicator assessed at {risk_resp.risk_score:.1f}/100 ({risk_resp.risk_level} risk level). Raw structural score: {risk_resp.raw_risk_score:.1f}/100.",
+            finding=finding_text,
+
             supporting_tx_hashes=[],
             supporting_addresses=[trace_result.starting_wallet],
             supporting_path_ids=[p.path_id for p in trace_result.paths],
@@ -73,30 +79,41 @@ class EvidenceBuilder:
         )
         evidence_items.append(risk_ev)
 
+        if risk_resp and risk_resp.risk_score is not None:
+            fnd_title = f"Transaction-Flow Risk Indicator: {risk_resp.risk_level} ({risk_resp.risk_score:.1f}/100)"
+            fnd_desc = (
+                f"Composite risk indicator for target wallet {trace_result.starting_wallet}. "
+                f"Raw structural risk score: {(risk_resp.raw_risk_score or 0.0):.1f}/100. "
+                f"Service Entity Context: {risk_resp.service_entity_context}. "
+                f"Interpretation: {risk_resp.contextual_interpretation}. "
+                f"Contributing factors: {', '.join(risk_resp.contributing_factors) if risk_resp.contributing_factors else 'None'}."
+            )
+        else:
+            fnd_title = "Transaction-Flow Risk Indicator: INSUFFICIENT EVIDENCE"
+            fnd_desc = (
+                f"Composite risk indicator for target wallet {trace_result.starting_wallet}. "
+                "Assessment status: INSUFFICIENT_EVIDENCE (Insufficient transaction history available)."
+            )
+
         risk_fnd = FindingSchema(
             finding_id=risk_fnd_id,
             case_id=case_id,
             job_id=job_id,
             finding_type="TRANSACTION_FLOW_RISK",
-            title=f"Transaction-Flow Risk Indicator: {risk_resp.risk_level} ({risk_resp.risk_score:.1f}/100)",
-            description=(
-                f"Composite risk indicator for target wallet {trace_result.starting_wallet}. "
-                f"Raw structural risk score: {risk_resp.raw_risk_score:.1f}/100. "
-                f"Service Entity Context: {risk_resp.service_entity_context}. "
-                f"Interpretation: {risk_resp.contextual_interpretation}. "
-                f"Contributing factors: {', '.join(risk_resp.contributing_factors) if risk_resp.contributing_factors else 'None'}."
-            ),
-            severity="CRITICAL" if risk_resp.risk_level == "CRITICAL" else ("HIGH" if risk_resp.risk_level == "HIGH" else "MODERATE"),
+            title=fnd_title,
+            description=fnd_desc,
+            severity="CRITICAL" if (risk_resp and risk_resp.risk_level == "CRITICAL") else ("HIGH" if (risk_resp and risk_resp.risk_level == "HIGH") else "MODERATE"),
             confidence=0.90,
             supporting_evidence_ids=[risk_ev_id],
             metadata={
-                "risk_score": risk_resp.risk_score,
-                "raw_risk_score": risk_resp.raw_risk_score,
-                "contextual_risk_score": risk_resp.contextual_risk_score,
-                "service_entity_context": risk_resp.service_entity_context,
-                "mitigations": risk_resp.false_positive_mitigations,
+                "risk_score": risk_resp.risk_score if risk_resp else None,
+                "raw_risk_score": risk_resp.raw_risk_score if risk_resp else None,
+                "contextual_risk_score": risk_resp.contextual_risk_score if risk_resp else None,
+                "service_entity_context": risk_resp.service_entity_context if risk_resp else False,
+                "mitigations": risk_resp.false_positive_mitigations if risk_resp else [],
             },
         )
+
         findings.append(risk_fnd)
 
         # 2. Velocity Movement Alerts Findings & Evidence

@@ -1,206 +1,276 @@
-import React, { useState } from 'react';
-import type { RiskIndicatorResponse } from '../types/api';
-import { CheckCircle2, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
+import React from 'react';
+import type { RiskIndicatorResponse, RiskIndicatorItem } from '../types/api';
+import { CheckCircle2, ShieldAlert, ExternalLink, Info, AlertTriangle, Activity } from 'lucide-react';
+import { buildExplorerUrl, getExplorerName } from '../utils/explorer';
 
 interface RiskBreakdownPanelProps {
   riskData?: RiskIndicatorResponse;
 }
 
-export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData }) => {
-  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+const DIMENSION_CAPS: Record<string, { label: string; max: number }> = {
+  entity_exposure: { label: 'Entity Exposure', max: 30 },
+  temporal: { label: 'Temporal Signals', max: 25 },
+  obfuscation: { label: 'Obfuscation Signals', max: 25 },
+  graph_structure: { label: 'Graph Structure', max: 20 },
+  value_flow: { label: 'Value Flow', max: 15 },
+  behavioural: { label: 'Behavioural Signals', max: 15 },
+};
 
+export const RiskBreakdownPanel: React.FC<RiskBreakdownPanelProps> = ({ riskData }) => {
   if (!riskData) return null;
 
-  const rawScore = riskData.raw_risk_score ?? 78.0;
-  const contextualScore = riskData.contextual_risk_score ?? riskData.risk_score;
+  const isInsufficient = riskData.assessment_status === 'INSUFFICIENT_EVIDENCE' || riskData.risk_score === null;
+  const scoreVal = riskData.risk_score !== null && riskData.risk_score !== undefined ? riskData.risk_score : null;
   const isServiceEntity = riskData.service_entity_context || riskData.is_known_service_entity;
+  const explorerName = getExplorerName(riskData.chain || 'TRON');
+
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-xs mb-8 font-sans">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+      {/* Panel Header */}
+      <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 font-sans mb-1">
-            OVERALL RISK
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono mb-1">
+            EXPLAINABLE GRAPH RISK ENGINE ({riskData.calculation_version || 'EGRE_V1'})
           </div>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-900 font-sans flex items-center space-x-2">
             <ShieldAlert className="w-4 h-4 text-amber-600" />
-            <span>OVERALL RISK ASSESSMENT & RISK FACTORS</span>
+            <span>EXPLAINABLE GRAPH RISK ASSESSMENT</span>
           </h2>
           <p className="text-xs text-slate-500 font-sans mt-0.5">
-            Evaluates structural movement speed, money retention, and verified entity context.
+            Traceable, deterministic indicator scoring with correlation control and evidence-backed explainability.
           </p>
         </div>
+
         <div className="flex items-center space-x-2">
-          <span className="text-xs font-sans font-semibold uppercase bg-amber-50 text-amber-900 border border-amber-200 px-3 py-1 rounded-md">
-            RISK LEVEL: {riskData.risk_level}
-          </span>
-        </div>
-      </div>
-
-      {/* Primary Investigator Summary Box */}
-      <div className="bg-slate-50/60 p-4 rounded-md border border-slate-200 mb-6">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-sans mb-1">
-          Investigator Risk Summary
-        </div>
-        <p className="text-xs text-slate-700 font-sans leading-relaxed">
-          {riskData.risk_level === 'HIGH' || riskData.risk_level === 'CRITICAL' ? (
-            <>
-              This transaction sequence shows <span className="font-semibold text-amber-800">high structural risk</span> due to unusually fast transfer speed across multiple wallets combined with direct movement toward an exchange endpoint.
-            </>
+          {isInsufficient ? (
+            <span className="text-xs font-sans font-semibold uppercase bg-slate-100 text-slate-700 border border-slate-300 px-3 py-1 rounded-md flex items-center space-x-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-slate-500" />
+              <span>INSUFFICIENT EVIDENCE</span>
+            </span>
           ) : (
-            <>
-              This transaction sequence has been analyzed for speed, hop distance, and entity context. The overall risk level is calculated as <span className="font-semibold">{riskData.risk_level}</span>.
-            </>
+            <span
+              className={`text-xs font-sans font-semibold uppercase px-3 py-1 rounded-md border ${
+                riskData.risk_level === 'VERY HIGH' || riskData.risk_level === 'HIGH' || riskData.risk_level === 'CRITICAL'
+                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                  : riskData.risk_level === 'MODERATE'
+                  ? 'bg-blue-50 text-blue-900 border-blue-300'
+                  : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+              }`}
+            >
+              RISK LEVEL: {riskData.risk_level}
+            </span>
           )}
-        </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Col: Primary Risk Level vs Base Suspicion */}
-        <div className="space-y-4 font-sans">
-          <div className="bg-slate-50/60 p-4 rounded-md border border-slate-200 space-y-4">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans">
-              Risk Level Summary
-            </div>
-
-            {/* Contextual Risk Score */}
-            <div>
-              <div className="flex justify-between items-baseline mb-1">
-                <span className="text-xs font-sans font-medium text-slate-700">CONTEXTUAL RISK:</span>
-                <span className="font-mono text-xl font-bold text-[#3730A3] tabular-nums">
-                  {contextualScore.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 100</span>
-                </span>
-              </div>
-              <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden border border-slate-200">
-                <div
-                  className="bg-[#3730A3] h-full rounded-full"
-                  style={{ width: `${contextualScore}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Base Flow / Structural Risk Score */}
-            <div className="pt-2 border-t border-slate-200">
-              <div className="flex justify-between items-baseline mb-1">
-                <span className="text-xs font-sans font-medium text-slate-600">FLOW RISK / STRUCTURAL RISK:</span>
-                <span className="font-mono text-sm font-bold text-slate-700 tabular-nums">
-                  {rawScore.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 100</span>
-                </span>
-              </div>
-              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-slate-400 h-full rounded-full"
-                  style={{ width: `${rawScore}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Entity Context Flag */}
-            <div className="pt-2 flex items-center justify-between text-xs font-sans">
-              <span className="text-slate-600 font-medium">ENTITY CONTEXT:</span>
-              <span
-                className={`font-semibold text-[11px] px-2 py-0.5 rounded border ${
-                  isServiceEntity
-                    ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
-                    : 'bg-slate-200/60 text-slate-700 border-slate-300'
-                }`}
-              >
-                {isServiceEntity ? 'Verified VASP endpoint' : 'Unverified / Private wallet'}
-              </span>
-            </div>
-
-            <div className="pt-2 text-[11px] text-slate-500 font-sans leading-relaxed border-t border-slate-200">
-              Note: High structural flow indicators remain evidentiary; verified VASP context affects contextual risk assessment without implying transactions are lawful.
-            </div>
+      {/* INSUFFICIENT EVIDENCE STATE BANNER */}
+      {isInsufficient ? (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 mb-6 text-xs text-slate-700 space-y-2 font-sans">
+          <div className="flex items-center space-x-2 text-slate-800 font-bold font-mono">
+            <Info className="w-4 h-4 text-slate-500" />
+            <span>INSUFFICIENT TRANSACTION HISTORY FOR GRAPH RISK ASSESSMENT</span>
+          </div>
+          <p className="leading-relaxed">
+            {riskData.contextual_interpretation ||
+              'Only one observable transaction was available. The available history is insufficient for reliable behavioural and graph risk assessment.'}
+          </p>
+          <div className="text-[11px] text-slate-500 italic">
+            Note: Insufficient evidence is an assessment state, not a low risk rating. Further downstream activity is required to evaluate risk indicators.
           </div>
         </div>
-
-        {/* Center/Right Col: Key Risk Factors & Safety Mitigations */}
-        <div className="lg:col-span-2 space-y-4 font-sans">
-          <div className="bg-slate-50/60 p-4 rounded-md border border-slate-200">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-sans mb-3">
-              Key Risk Factors Identified
+      ) : (
+        <>
+          {/* Primary Summary Banner */}
+          <div className="bg-slate-50/70 p-4 rounded-md border border-slate-200 mb-6">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-sans mb-1">
+              Investigator Risk Assessment
             </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs font-sans text-left">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-400 font-sans uppercase text-[10px]">
-                    <th className="pb-2 font-semibold">RISK FACTOR</th>
-                    <th className="pb-2 text-right font-semibold">WEIGHT CONTRIBUTION</th>
-                    <th className="pb-2 text-right font-semibold">SCORE IMPACT</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-slate-800 font-sans">
-                  {Object.entries(riskData.component_contributions || {}).map(([key, val]) => (
-                    <tr key={key}>
-                      <td className="py-2.5 font-medium text-slate-700 font-sans">
-                        {key
-                          .replace(/_/g, ' ')
-                          .replace(/velocity/gi, 'Movement Speed')
-                          .replace(/retention/gi, 'Money Retained')
-                          .replace(/proximity/gi, 'VASP Distance')
-                          .toUpperCase()}
-                      </td>
-                      <td className="py-2.5 text-right font-bold font-mono tabular-nums">
-                        {val.toFixed(1)} pts
-                      </td>
-                      <td className="py-2.5 text-right font-mono tabular-nums">
-                        <span className="bg-indigo-50 text-[#3730A3] border border-indigo-200 px-2 py-0.5 rounded font-bold text-[11px]">
-                          +{(val * 0.8).toFixed(1)}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <p className="text-xs text-slate-700 font-sans leading-relaxed">
+              Calculated Explainable Risk Score: <strong className="font-mono text-indigo-900 text-sm">{scoreVal?.toFixed(1)} / 100</strong> ({riskData.risk_level} Risk Level).
+              This rating is derived deterministically from {riskData.indicators?.length || 0} observable transaction graph indicators without LLM intervention.
+            </p>
           </div>
 
-          {/* Safety Mitigations Notes */}
-          {riskData.false_positive_mitigations && riskData.false_positive_mitigations.length > 0 && (
-            <div className="bg-emerald-50/60 border border-emerald-200 rounded-md p-4 space-y-2 font-sans">
-              <div className="flex items-center space-x-2 text-emerald-900 font-semibold text-xs uppercase tracking-wider font-sans">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Safety Mitigation Applied</span>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+            {/* Left Col (4 cols): Risk Level & Dimension Scores */}
+            <div className="lg:col-span-4 space-y-4 font-sans">
+              <div className="bg-slate-50/60 p-4 rounded-md border border-slate-200 space-y-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-mono">
+                  RISK SCORE SUMMARY
+                </div>
+
+                {/* Main Contextual Score Bar */}
+                <div>
+                  <div className="flex justify-between items-baseline mb-1">
+                    <span className="text-xs font-sans font-semibold text-slate-800">FINAL RISK SCORE:</span>
+                    <span className="font-mono text-xl font-bold text-indigo-900 tabular-nums">
+                      {scoreVal?.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 100</span>
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden border border-slate-200">
+                    <div
+                      className={`h-full rounded-full ${
+                        (scoreVal || 0) >= 75
+                          ? 'bg-rose-600'
+                          : (scoreVal || 0) >= 50
+                          ? 'bg-amber-600'
+                          : (scoreVal || 0) >= 25
+                          ? 'bg-blue-600'
+                          : 'bg-emerald-600'
+                      }`}
+                      style={{ width: `${Math.min(100, scoreVal || 0)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Dimension Scores Breakdown (Correlation Control) */}
+                <div className="pt-3 border-t border-slate-200 space-y-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-mono flex items-center justify-between">
+                    <span>DIMENSION SCORES (CAPPED)</span>
+                    <span className="text-[10px] text-slate-400">CORRELATION CONTROL</span>
+                  </div>
+
+                  {Object.entries(DIMENSION_CAPS).map(([key, info]) => {
+                    const score = riskData.dimension_scores?.[key] || 0.0;
+                    const pct = Math.min(100, (score / info.max) * 100);
+                    return (
+                      <div key={key} className="text-xs space-y-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-slate-600">{info.label}:</span>
+                          <span className="font-mono font-semibold text-slate-800">
+                            {score.toFixed(1)} / {info.max} pts
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${score > 0 ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Entity Context Flag */}
+                <div className="pt-2 flex items-center justify-between text-xs font-sans border-t border-slate-200">
+                  <span className="text-slate-600 font-medium">ENTITY CONTEXT:</span>
+                  <span
+                    className={`font-semibold text-[11px] px-2 py-0.5 rounded border ${
+                      isServiceEntity
+                        ? 'bg-indigo-50 text-indigo-900 border-indigo-200'
+                        : 'bg-slate-200/60 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {isServiceEntity ? 'Verified VASP Endpoint' : 'Unverified / Private Wallet'}
+                  </span>
+                </div>
               </div>
-              <ul className="text-xs text-emerald-800 font-sans space-y-1">
-                {riskData.false_positive_mitigations.map((note, nIdx) => (
-                  <li key={nIdx} className="leading-relaxed">
-                    {note}
-                  </li>
-                ))}
-              </ul>
             </div>
-          )}
 
-          {/* Collapsible Technical Computation Details */}
-          <div className="pt-1 font-sans">
-            <button
-              onClick={() => setShowTechnicalDetails(!showTechnicalDetails)}
-              className="flex items-center space-x-1.5 text-xs font-semibold text-[#3730A3] hover:text-[#312E81] transition-colors font-sans"
-            >
-              <span>{showTechnicalDetails ? 'Hide Technical Details' : 'VIEW DETAILS'}</span>
-              {showTechnicalDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+            {/* Right Col (8 cols): EXPLAINABLE "WHY THIS RISK?" ITEMIZATION */}
+            <div className="lg:col-span-8 space-y-4 font-sans">
+              <div className="bg-slate-50/60 p-4 rounded-md border border-slate-200">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-mono mb-3 flex items-center space-x-1.5">
+                  <Activity className="w-4 h-4 text-indigo-600" />
+                  <span>WHY THIS RISK? (ITEMIZED EVIDENCE-LINKED INDICATORS)</span>
+                </div>
 
-            {showTechnicalDetails && (
-              <div className="mt-3 bg-white p-4 rounded-md border border-slate-200 text-xs text-slate-700 space-y-2 font-sans">
-                <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                  <span className="text-slate-500 font-sans">FLOW RISK / STRUCTURAL RISK:</span>
-                  <span className="font-mono font-bold text-slate-900">{rawScore.toFixed(2)} / 100</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                  <span className="text-slate-500 font-sans">CONTEXTUAL RISK:</span>
-                  <span className="font-mono font-bold text-[#3730A3]">{contextualScore.toFixed(2)} / 100</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-sans">ENTITY CONTEXT:</span>
-                  <span className="font-mono font-bold text-slate-900">{isServiceEntity ? 'Verified VASP endpoint' : 'Unverified / Private wallet'}</span>
-                </div>
+                {riskData.indicators && riskData.indicators.length > 0 ? (
+                  <div className="space-y-3">
+                    {riskData.indicators.map((ind: RiskIndicatorItem, idx: number) => (
+                      <div key={idx} className="bg-white p-3.5 rounded-md border border-slate-200 space-y-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-mono font-bold text-indigo-700 text-sm">
+                              +{ind.contribution.toFixed(1)} pts
+                            </span>
+                            <span className="font-bold text-slate-900">{ind.indicator_name}</span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                                ind.classification === 'OBSERVED'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                  : ind.classification === 'HEURISTIC'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                              }`}
+                            >
+                              [{ind.classification}]
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                            {ind.dimension}
+                          </span>
+                        </div>
+
+                        <div className="text-slate-600 space-y-1">
+                          <div>
+                            <span className="font-medium text-slate-700">Measured Value: </span>
+                            <span className="font-mono font-semibold text-slate-900">{ind.observed_value}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            Detection Rule: {ind.detection_rule} ({ind.threshold_reference})
+                          </div>
+                        </div>
+
+                        {/* Supporting Transaction Evidence Hashes */}
+                        {ind.supporting_transactions && ind.supporting_transactions.length > 0 && (
+                          <div className="pt-1.5 flex flex-wrap items-center gap-2 border-t border-slate-100 font-mono text-[11px]">
+                            <span className="text-slate-400 font-sans font-medium text-[10px]">SUPPORTING TXS:</span>
+                            {ind.supporting_transactions.map((txHash, hIdx) => (
+                              <a
+                                key={hIdx}
+                                href={buildExplorerUrl(txHash, riskData.chain)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-indigo-600 hover:text-indigo-800 underline flex items-center space-x-0.5"
+                                title={`View on ${explorerName}`}
+                              >
+                                <span>{txHash.substring(0, 10)}...</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500 italic p-3 bg-white rounded border border-slate-200">
+                    No elevated risk indicators detected in current transaction sequence.
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Safety Mitigations Notes */}
+              {riskData.false_positive_mitigations && riskData.false_positive_mitigations.length > 0 && (
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-md p-4 space-y-2 font-sans">
+                  <div className="flex items-center space-x-2 text-emerald-900 font-semibold text-xs uppercase tracking-wider font-sans">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Contextual Safety Mitigations Applied</span>
+                  </div>
+                  <ul className="text-xs text-emerald-800 font-sans space-y-1">
+                    {riskData.false_positive_mitigations.map((note, nIdx) => (
+                      <li key={nIdx} className="leading-relaxed">
+                        • {note}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
+        </>
+      )}
+
+      {/* STATUTORY INVESTIGATIVE DISCLAIMER */}
+      <div className="pt-4 border-t border-slate-200 text-[11px] text-slate-500 font-sans leading-relaxed flex items-start space-x-2">
+        <Info className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <strong className="font-semibold text-slate-700">Investigative Interpretation Notice: </strong>
+          {riskData.contextual_interpretation ||
+            'Risk indicators represent observed transaction and graph patterns. They do not by themselves establish criminal activity, ownership, or illicit intent.'}
         </div>
       </div>
     </div>

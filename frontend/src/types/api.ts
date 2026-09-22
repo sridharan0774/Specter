@@ -272,17 +272,36 @@ export interface TypologyAnalysisResponse {
   analyzed_at: string;
 }
 
+export interface RiskIndicatorItem {
+  indicator_id: string;
+  indicator_name: string;
+  dimension: string;
+  classification: 'OBSERVED' | 'INFERRED' | 'HEURISTIC';
+  detection_rule: string;
+  observed_value: string;
+  threshold_reference: string;
+
+  contribution: number;
+  supporting_transactions?: string[];
+  supporting_paths?: string[];
+  evidence_references?: string[];
+}
+
 export interface RiskIndicatorResponse {
   trace_id: string;
   case_id?: string;
   starting_wallet: string;
   chain: string;
   asset: string;
-  risk_score: number;
-  raw_risk_score: number;
-  contextual_risk_score: number;
-  contextual_interpretation: string;
-  risk_level: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL';
+  risk_score: number | null;
+  raw_risk_score?: number | null;
+  contextual_risk_score?: number | null;
+  contextual_interpretation?: string;
+  risk_level: 'LOW' | 'MODERATE' | 'HIGH' | 'VERY HIGH' | 'CRITICAL' | null;
+  assessment_status?: 'ASSESSED' | 'INSUFFICIENT_EVIDENCE';
+  calculation_version?: string;
+  dimension_scores?: Record<string, number>;
+  indicators?: RiskIndicatorItem[];
   component_contributions: Record<string, number>;
   contributing_factors: string[];
   is_known_service_entity: boolean;
@@ -290,6 +309,7 @@ export interface RiskIndicatorResponse {
   false_positive_mitigations: string[];
   analyzed_at: string;
 }
+
 
 export interface SahyogPackage {
   sahyog_metadata: {

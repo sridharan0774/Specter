@@ -10,6 +10,7 @@ from app.models.investigation import InvestigationJob, InvestigationSnapshot
 from app.models.finding import Finding
 from app.models.sahyog import SahyogRequest
 from app.models.intelligence import CrossChainRelationship, PatternObservation
+from app.models.risk import RiskAssessmentRecord
 
 __all__ = [
     "TimestampMixin",
@@ -32,5 +33,7 @@ __all__ = [
     "SahyogRequest",
     "CrossChainRelationship",
     "PatternObservation",
+    "RiskAssessmentRecord",
 ]
+
 

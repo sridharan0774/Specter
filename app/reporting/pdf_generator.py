@@ -168,16 +168,22 @@ class PDFReportGenerator:
 
         # 2. Risk Indicator Breakdown
         story.append(Paragraph("2. TRANSACTION-FLOW RISK INDICATOR BREAKDOWN", section_heading))
-        risk_color = "#E53E3E" if risk_resp.risk_level in ["HIGH", "CRITICAL"] else ("#DD6B20" if risk_resp.risk_level == "MODERATE" else "#38A169")
-        
-        risk_summary_text = (
-            f"<b>Contextual Risk Score:</b> <font color='{risk_color}'><b>{risk_resp.risk_score:.1f} / 100.0 ({risk_resp.risk_level})</b></font><br/>"
-            f"<b>Raw Transaction-Flow Score:</b> {risk_resp.raw_risk_score:.1f} / 100.0<br/>"
-            f"<b>Service Entity Context:</b> {risk_resp.service_entity_context}<br/>"
-            f"<b>Contextual Interpretation:</b> {risk_resp.contextual_interpretation}"
-        )
+        if risk_resp and risk_resp.risk_score is not None:
+            risk_color = "#E53E3E" if risk_resp.risk_level in ["HIGH", "VERY HIGH", "CRITICAL"] else ("#DD6B20" if risk_resp.risk_level == "MODERATE" else "#38A169")
+            risk_summary_text = (
+                f"<b>Contextual Risk Score:</b> <font color='{risk_color}'><b>{risk_resp.risk_score:.1f} / 100.0 ({risk_resp.risk_level})</b></font><br/>"
+                f"<b>Raw Transaction-Flow Score:</b> {(risk_resp.raw_risk_score or 0.0):.1f} / 100.0<br/>"
+                f"<b>Service Entity Context:</b> {risk_resp.service_entity_context}<br/>"
+                f"<b>Contextual Interpretation:</b> {risk_resp.contextual_interpretation}"
+            )
+        else:
+            risk_summary_text = (
+                f"<b>Assessment Status:</b> <font color='#718096'><b>INSUFFICIENT_EVIDENCE (N/A)</b></font><br/>"
+                f"<b>Contextual Interpretation:</b> {risk_resp.contextual_interpretation if risk_resp else 'Insufficient history'}"
+            )
         story.append(Paragraph(risk_summary_text, body_style))
         story.append(Spacer(1, 4))
+
 
         # Risk Breakdown Table
         risk_comp_data = [

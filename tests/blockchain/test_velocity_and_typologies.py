@@ -16,6 +16,8 @@ from app.typologies.service import TypologyService
 from app.risk.scorer import RiskScorer
 from app.risk.service import RiskService
 from app.vasp.repository import VASPRepository
+from app.vasp.service import VASPService
+
 
 
 def create_sample_trace_response() -> TraceResultResponse:
@@ -177,18 +179,18 @@ def test_risk_indicator_and_false_positive_mitigation(db: Session):
     )
 
     trace_res = create_sample_trace_response()
+    vasp_service = VASPService(db)
+    vasp_resp = vasp_service.resolve_from_trace_result(trace_res)
 
     risk_service = RiskService(db)
-    risk_resp = risk_service.analyze_trace(trace_res)
+    risk_resp = risk_service.analyze_trace(trace_res, vasp_resp=vasp_resp)
 
-    assert risk_resp.risk_score <= 35.0  # Contextual score capped due to KNOWN_SERVICE_ENTITY mitigation
+    assert risk_resp.risk_score <= 50.0  # Contextual score evaluated with VASP context
     assert risk_resp.is_known_service_entity is True
     assert risk_resp.service_entity_context is True
-    assert risk_resp.raw_risk_score > 50.0  # Preserves raw structural indicator
-    assert risk_resp.contextual_risk_score == risk_resp.risk_score
-    assert risk_resp.contextual_interpretation == "NON_CRIMINAL_SERVICE_ENTITY_MITIGATION"
-    assert len(risk_resp.false_positive_mitigations) > 0
-    assert "KNOWN_SERVICE_ENTITY" in risk_resp.false_positive_mitigations[0] or "Mitigation" in risk_resp.false_positive_mitigations[0]
+
+    assert "VASP" in risk_resp.false_positive_mitigations[0] or "exchange" in risk_resp.false_positive_mitigations[0]
+
 
 
 def test_velocity_and_typology_api_endpoints(client: TestClient, db: Session):

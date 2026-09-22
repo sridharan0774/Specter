@@ -106,10 +106,11 @@ class InvestigationSummarySchema(BaseModel):
     chain: str
     asset: str
     investigation_status: str
-    risk_score: float
-    raw_risk_score: float
-    contextual_risk_score: float
-    risk_level: str
+    risk_score: Optional[float] = None
+    raw_risk_score: Optional[float] = None
+    contextual_risk_score: Optional[float] = None
+    risk_level: Optional[str] = None
+
     is_known_service_entity: bool
     service_entity_context: bool
     contextual_interpretation: str

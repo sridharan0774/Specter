@@ -682,7 +682,8 @@ class SahyogAdapter:
                 "fiu_ind_pmla_routing": {
                     "statute": "Prevention of Money Laundering Act (PMLA), 2002 & FIU-IND Guidelines",
                     "routing_authority": "Financial Intelligence Unit - India (FIU-IND)",
-                    "priority": "HIGH" if (risk_resp and risk_resp.risk_score >= 60.0) else "ROUTINE",
+                    "priority": "HIGH" if (risk_resp and risk_resp.risk_score is not None and risk_resp.risk_score >= 60.0) else "ROUTINE",
+
                     "target_vasp_nodal_officer": vasp_name,
                     "target_endpoint": endpoint_address,
                 },
