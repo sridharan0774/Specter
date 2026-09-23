@@ -120,16 +120,14 @@ class VASPRepository:
             "TAqDQCKgQozPRd9GPASCPQHYMx7Yt1LbAv",  # Unverified address without public explorer or official backing
             "TQn9Y2khEsLJW1ChVWFMSMeSTow5KcbqSE",  # Fake/synthetic address, invalid on TRON
             "TKHuVq1oebufufatmBwvu18y8R5Jw2n2Vb",  # Fake/synthetic address, invalid on TRON
+            "0x1000000000000000000000000000000000000001",  # Legacy synthetic Allbridge address placeholder
+            "0xChangeNOW111111111111111111111111111111",  # Legacy synthetic ChangeNOW address placeholder
         ]
 
         # 1. Purge unsupported legacy seeds from the existing database
+        all_existing = self.db.query(VASPRecord).all()
         for discarded in discarded_addresses:
-            matches = (
-                self.db.query(VASPRecord)
-                .filter(VASPRecord.chain == "TRON")
-                .all()
-            )
-            for m in matches:
+            for m in all_existing:
                 if m.address.strip().upper() == discarded.strip().upper():
                     logger.info(f"Purging unverified legacy seed record: {m.address} ({m.entity_name})")
                     self.db.delete(m)
@@ -314,33 +312,18 @@ class VASPRepository:
             },
             # Verified Bridge Entity (Level 1 Official)
             {
-                "address": "0x1000000000000000000000000000000000000001",
+                "address": "0x609c690e8F7D68a59885c9132e812eEbDaAf0c9e",
                 "chain": "ETHEREUM",
                 "entity_name": "Allbridge Core Router",
                 "entity_role": "BRIDGE",
                 "entity_type": "BRIDGE",
                 "label_type": "bridge_contract",
                 "source": "Allbridge Official Documentation & Contract Registry",
-                "source_url": "https://allbridge.io",
-                "source_reference": "ALLBRIDGE-CORE-MAINNET-01",
+                "source_url": "https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts",
+                "source_reference": "ALLBRIDGE-CORE-ETH-ROUTER",
                 "source_quality_level": 1,
                 "confidence": 1.0,
-                "notes": "Verified cross-chain liquidity bridge router connecting EVM and TRON chains. Classified as BRIDGE.",
-            },
-            # Verified Cross-Chain Service (Level 1 Official)
-            {
-                "address": "0xChangeNOW111111111111111111111111111111",
-                "chain": "ETHEREUM",
-                "entity_name": "ChangeNOW Cross-Chain Swap",
-                "entity_role": "CROSS_CHAIN_SERVICE",
-                "entity_type": "CROSS_CHAIN_SERVICE",
-                "label_type": "service_settlement",
-                "source": "ChangeNOW API Documentation & Explorer Labels",
-                "source_url": "https://changenow.io",
-                "source_reference": "CHANGENOW-OFFICIAL-SWAP-01",
-                "source_quality_level": 1,
-                "confidence": 1.0,
-                "notes": "Verified non-custodial instant cross-chain swap service settlement wallet. Classified as CROSS_CHAIN_SERVICE.",
+                "notes": "Verified cross-chain liquidity bridge router connecting EVM and TRON chains. Classified as BRIDGE. Not an attributable VASP.",
             },
         ]
 

@@ -84,11 +84,12 @@ def test_bridge_and_cross_chain_relationships(db: Session):
     cross_engine = CrossChainIntelligenceEngine(db)
 
     # 1. Identify Verified Bridge Entity
-    bridge_info = cross_engine.identify_bridge_or_service("0x1000000000000000000000000000000000000001", "ETHEREUM")
+    bridge_info = cross_engine.identify_bridge_or_service("0x609c690e8F7D68a59885c9132e812eEbDaAf0c9e", "ETHEREUM")
     assert bridge_info["is_cross_chain_entity"] is True
     assert bridge_info["entity_name"] == "Allbridge Core Router"
     assert bridge_info["entity_role"] == "BRIDGE"
     assert bridge_info["verification_status"] == "VERIFIED"
+
 
     # 2. Record Cross-Chain Relationship
     rel = cross_engine.record_cross_chain_relationship(

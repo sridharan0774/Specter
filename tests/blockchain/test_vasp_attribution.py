@@ -54,6 +54,25 @@ def test_vasp_repository_seed(db: Session):
     assert tether.source_quality_level == 1
 
 
+def test_allbridge_and_changenow_seed_audit(db: Session):
+    """Verify that Allbridge uses documented router address (non-VASP BRIDGE) and synthetic ChangeNOW address is absent."""
+    repo = VASPRepository(db)
+    repo.seed_known_public_vasps()
+
+    # 1. Documented Allbridge Core Ethereum address is present as BRIDGE
+    allbridge = repo.search_entity("0x609c690e8F7D68a59885c9132e812eEbDaAf0c9e", "ETHEREUM")
+    assert allbridge is not None
+    assert allbridge.entity_name == "Allbridge Core Router"
+    assert allbridge.entity_role == "BRIDGE"
+    assert allbridge.entity_type == "BRIDGE"
+    assert allbridge.is_attributable_vasp is False
+
+    # 2. Synthetic Allbridge and ChangeNOW addresses are absent
+    assert repo.search_entity("0x1000000000000000000000000000000000000001") is None
+    assert repo.search_entity("0xChangeNOW111111111111111111111111111111") is None
+
+
+
 def test_vasp_matcher_find_candidates(db: Session):
     """Test matching known VASP endpoints from a trace path graph."""
     repo = VASPRepository(db)
