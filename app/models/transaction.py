@@ -7,7 +7,7 @@ from app.models.base import TimestampMixin
 class NormalizedTransaction(Base, TimestampMixin):
     __tablename__ = "transactions"
 
-    id = Column(String(128), primary_key=True)  # Format: {chain}_{tx_hash} or composite key
+    id = Column(String(255), primary_key=True)  # Format: {chain}_{tx_hash} or composite key
     chain = Column(String(32), nullable=False, index=True)
     tx_hash = Column(String(128), nullable=False, index=True)
     block_number = Column(BigInteger, nullable=True)

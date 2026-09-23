@@ -30,17 +30,20 @@ connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 
+
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
     pool_pre_ping=True,
 )
 
+
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine,
 )
+
 
 Base = declarative_base()
 
@@ -55,7 +58,7 @@ def get_db() -> Generator:
 
 
 def init_db() -> None:
-    """Initialize database tables and apply SQLite compatibility migrations."""
+    """Initialize database tables and apply compatibility migrations."""
     import app.models
 
     logger.info(
@@ -65,6 +68,43 @@ def init_db() -> None:
 
     # Create all declared tables and indexes.
     Base.metadata.create_all(bind=engine)
+
+    # PostgreSQL compatibility migration.
+    # The transactions.id column was originally VARCHAR(128),
+    # but composite transaction IDs can exceed that length.
+    if engine.dialect.name == "postgresql":
+        try:
+            with engine.begin() as conn:
+                result = conn.execute(
+                    text(
+                        """
+                        SELECT character_maximum_length
+                        FROM information_schema.columns
+                        WHERE table_name = 'transactions'
+                          AND column_name = 'id'
+                        """
+                    )
+                ).scalar()
+
+                if result is not None and result < 255:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE transactions "
+                            "ALTER COLUMN id TYPE VARCHAR(255)"
+                        )
+                    )
+
+                    logger.info(
+                        "Expanded transactions.id from VARCHAR(%s) to VARCHAR(255).",
+                        result,
+                    )
+
+        except Exception:
+            logger.exception(
+                "PostgreSQL compatibility migration for "
+                "transactions.id failed."
+            )
+            raise
 
     # SQLite-only compatibility migrations.
     if engine.dialect.name == "sqlite":
