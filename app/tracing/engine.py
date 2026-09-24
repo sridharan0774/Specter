@@ -305,7 +305,16 @@ class TraceEngine:
         Reconstruct path metrics, calculate exact value retention using Decimal,
         compute time deltas, and evaluate Path Relevance Score.
         """
-        hop_count = len(path_txs)
+        if path_txs:
+            wallet_sequence = [path_txs[0].from_address] + [tx.to_address for tx in path_txs]
+            hop_count = len(path_txs)
+        elif path_addrs:
+            wallet_sequence = list(path_addrs)
+            hop_count = max(0, len(wallet_sequence) - 1)
+        else:
+            wallet_sequence = []
+            hop_count = 0
+
         initial_amount = path_txs[0].amount if path_txs else 0.0
         final_amount = path_txs[-1].amount if path_txs else 0.0
 
@@ -320,8 +329,8 @@ class TraceEngine:
         hops: List[TraceHopItem] = []
         delta_ts: List[float] = []
 
-        first_ts = path_txs[0].timestamp
-        last_ts = path_txs[-1].timestamp
+        first_ts = path_txs[0].timestamp if path_txs else datetime.now(timezone.utc)
+        last_ts = path_txs[-1].timestamp if path_txs else first_ts
         elapsed_time_seconds = max(0.0, (last_ts - first_ts).total_seconds())
 
         for idx, tx in enumerate(path_txs, start=1):
@@ -354,7 +363,7 @@ class TraceEngine:
             "avg_delta_t_seconds": round(avg_delta, 1),
             "min_delta_t_seconds": round(min_delta, 1),
             "max_delta_t_seconds": round(max_delta, 1),
-            "unique_wallets": len(set(path_addrs)),
+            "unique_wallets": len(set(wallet_sequence)),
             "tx_count": len(path_txs),
         }
 
@@ -372,7 +381,7 @@ class TraceEngine:
 
         return TracePathDetail(
             path_id=path_id,
-            wallet_sequence=path_addrs,
+            wallet_sequence=wallet_sequence,
             hop_count=hop_count,
             initial_amount=initial_amount,
             final_amount=final_amount,
@@ -384,6 +393,7 @@ class TraceEngine:
             metrics=metrics,
             hops=hops,
         )
+
 
     def _calculate_relevance_score(
         self,

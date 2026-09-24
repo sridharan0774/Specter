@@ -99,11 +99,21 @@ class TypologyService:
                         )
                     )
 
+            if hops:
+                wallet_seq = [hops[0].from_address] + [h.to_address for h in hops]
+                hop_cnt = len(hops)
+            elif p.wallet_sequence:
+                wallet_seq = p.wallet_sequence
+                hop_cnt = p.hop_count if p.hop_count is not None else max(0, len(wallet_seq) - 1)
+            else:
+                wallet_seq = []
+                hop_cnt = 0
+
             paths_detail.append(
                 TracePathDetail(
                     path_id=p.path_id,
-                    wallet_sequence=p.wallet_sequence,
-                    hop_count=p.hop_count,
+                    wallet_sequence=wallet_seq,
+                    hop_count=hop_cnt,
                     initial_amount=p.initial_amount,
                     final_amount=p.final_amount,
                     value_retention_percent=p.value_retention_percent,
@@ -115,6 +125,7 @@ class TypologyService:
                     hops=hops,
                 )
             )
+
 
         return TraceResultResponse(
             trace_id=trace_run.trace_id,

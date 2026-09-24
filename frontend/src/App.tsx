@@ -115,25 +115,7 @@ export function App() {
 
 
   // Handle Mode Switch
-  const handleToggleMode = (live: boolean) => {
-    setIsLiveMode(live);
-    setApiError(null);
-    if (!live) {
-      // Switched to Demo Mode -> Load Benchmark Fixture Data
-      setDataset(MOCK_INVESTIGATION_DATASET);
-      setCaseId(SAMPLE_CASE_ID);
-      setSelectedPathId(MOCK_INVESTIGATION_DATASET.trace_result?.paths?.[0]?.path_id || '');
-    } else {
-      // Switched to Live Mode -> Clear Fixture Data if loaded
-      if (dataset === MOCK_INVESTIGATION_DATASET) {
-        setDataset(null);
-        setCaseId('');
-        setSelectedPathId('');
-        setSelectedNode(null);
-        setSelectedHop(null);
-      }
-    }
-  };
+
 
   // Handle Starting Investigation
   const handleStartInvestigation = async (req: InvestigationStartRequest, customCaseId?: string) => {
@@ -270,15 +252,13 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased">
-      {/* Header Bar */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        caseId={caseId}
-        isLiveMode={isLiveMode}
-        setIsLiveMode={handleToggleMode}
-        healthStatus={healthStatus}
-      />
+     <Navbar
+  activeTab={activeTab}
+  setActiveTab={setActiveTab}
+  caseId={caseId}
+  isLiveMode={isLiveMode}
+  healthStatus={healthStatus}
+/>
 
       {/* Mode Status Sub-Header */}
       <div

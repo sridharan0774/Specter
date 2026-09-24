@@ -395,3 +395,82 @@ async def test_live_tron_multihop_tracing(db: Session):
                 assert hop.block_number > 0
 
 
+@pytest.mark.anyio
+async def test_three_hop_path_wallet_sequence_and_hop_count(db: Session):
+    """
+    Regression Test:
+    Proves a 3-hop path returns 4 wallet_sequence entries (A -> B -> C -> D),
+    and proves hop_count equals len(wallet_sequence) - 1 for all paths.
+    """
+    t0 = datetime.now(timezone.utc) - timedelta(hours=3)
+    t1 = t0 + timedelta(minutes=5)
+    t2 = t1 + timedelta(minutes=5)
+    t3 = t2 + timedelta(minutes=5)
+
+    tx1 = NormalizedTransactionBase(
+        chain="TRON",
+        tx_hash="tx_3hop_1",
+        timestamp=t1,
+        from_address="W_A",
+        to_address="W_B",
+        asset="USDT",
+        amount=1000.0,
+        source_provider="mock",
+        explorer_url="https://tronscan.org/#/transaction/tx_3hop_1",
+    )
+    tx2 = NormalizedTransactionBase(
+        chain="TRON",
+        tx_hash="tx_3hop_2",
+        timestamp=t2,
+        from_address="W_B",
+        to_address="W_C",
+        asset="USDT",
+        amount=980.0,
+        source_provider="mock",
+        explorer_url="https://tronscan.org/#/transaction/tx_3hop_2",
+    )
+    tx3 = NormalizedTransactionBase(
+        chain="TRON",
+        tx_hash="tx_3hop_3",
+        timestamp=t3,
+        from_address="W_C",
+        to_address="W_D",
+        asset="USDT",
+        amount=950.0,
+        source_provider="mock",
+        explorer_url="https://tronscan.org/#/transaction/tx_3hop_3",
+    )
+
+    topology = {
+        "W_A": [tx1],
+        "W_B": [tx2],
+        "W_C": [tx3],
+        "W_D": [],
+    }
+
+    adapter = MockAdapter(topology=topology)
+    engine = TraceEngine(db=db, adapter=adapter)
+
+    request = TraceRequest(
+        starting_wallet="W_A",
+        chain="TRON",
+        asset="USDT",
+        max_hops=4,
+    )
+
+    result = await engine.execute_trace(request=request)
+
+    assert result.status == "COMPLETED"
+
+    # Locate 3-hop path ending at W_D
+    three_hop_paths = [p for p in result.paths if p.hop_count == 3]
+    assert len(three_hop_paths) == 1
+    p3 = three_hop_paths[0]
+
+    # Requirement 13: 3-hop path returns 4 wallet_sequence entries
+    assert p3.wallet_sequence == ["W_A", "W_B", "W_C", "W_D"]
+    assert len(p3.wallet_sequence) == 4
+
+    # Requirement 14: hop_count equals len(wallet_sequence) - 1 for ALL paths
+    for path in result.paths:
+        assert path.hop_count == len(path.wallet_sequence) - 1
