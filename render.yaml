@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: specter-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: specter-db
+          property: connectionString
+
+      - key: FRONTEND_URLS
+        sync: false
+
+      - key: TRONGRID_API_KEY
+        sync: false
+
+      - key: ETHERSCAN_API_KEY
+        sync: false
+
+      - key: POLYGONSCAN_API_KEY
+        sync: false
+
+      - key: BSCSCAN_API_KEY
+        sync: false
+
+      - key: MEMPOOL_API_URL
+        value: https://mempool.space/api
+
+      - key: SOLANA_RPC_URL
+        value: https://api.mainnet-beta.solana.com
+
+      - key: SOLSCAN_API_KEY
+        sync: false
+
+      - key: VASP_HIGH_CONFIDENCE_THRESHOLD
+        value: "70.0"
+
+databases:
+  - name: specter-db
+    plan: free
