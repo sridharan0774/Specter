@@ -11,10 +11,10 @@
 [![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL%20%7C%20SQLAlchemy-336791?style=for-the-badge\&logo=postgresql)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
-**"From an Unknown Wallet to an Actionable VASP Notice."**
+**"From an Unknown Wallet to an Actionable VASP Notice"**<br>
 Reconstructing multi-hop illicit fund trails, attributing destination VASPs with mathematical confidence scoring, and packaging court-admissible evidence for the **MHA I4C / SAHYOG Portal**.
 
-[🌐 Live Prototype](https://specter-beige.vercel.app/) • [📖 System Architecture](#-system-architecture) • [🚀 Getting Started](#-getting-started) • [📊 Scoring Model](#-evidence-based-vasp-attribution) • [📑 Academic References](#-academic-references)
+[🌐 Live Prototype](https://specter-beige.vercel.app/) 
 
 </div>
 
