@@ -332,7 +332,7 @@ pytest tests/ -v
 The heuristics, graph partitioning algorithms, and address clustering models used in SPECTER are based on peer-reviewed research:
 
 1. Address Clustering Heuristics for Ethereum, Financial Cryptography and Data Security (FC 2020), Springer. doi:10.1007/978-3-030-51280-4_33
-2. Watch Your Back: Identifying Cybercrime Financial Relationships in Bitcoin through Back-and-Forth Exploration, ACM SIGSAC (CCS '22). doi:10.1145/3548606.3560587
+2. Watch Your Back: Identifying Cybercrime Financial Relationships in Bitcoin through Back-and-Forth Exploration, ACM SIGSAC (CCS 22). doi:10.1145/3548606.3560587
 3. TRacer: Scalable Graph-Based Transaction Tracing for Account-Based Blockchain Trading Systems, IEEE Transactions on Information Forensics and Security (TIFS 2023). doi:10.1109/TIFS.2023.3266162
 4. Analysis of Address Linkability in Tornado Cash on Ethereum, CNCERT 2021, Springer, 2022. doi:10.1007/978-981-16-9229-1_3
 5. A Two-Layer Transaction Network-Based Method for Virtual Currency Address Identity Recognition, Cryptography (MDPI 2025). doi:10.3390/cryptography9040065
