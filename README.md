@@ -20,7 +20,7 @@ Reconstructing multi-hop illicit fund trails, attributing destination VASPs with
 
 ---
 
-## 📌 Problem Statement (SIH26182)
+##  Problem Statement (SIH26182)
 
 * **Problem Statement ID:** `SIH26182`
 * **Title:** Automated Attribution of Unknown Cryptocurrency Wallets to Nearest Virtual Asset Service Providers (VASPs) through Blockchain Intelligence APIs (SAHYOG Portal Integration)
@@ -36,7 +36,7 @@ Manual tracking via public block explorers takes **hours or days per case**, req
 
 ---
 
-## 🏛️ System Architecture
+##  System Architecture
 
 ```mermaid
 flowchart TB
@@ -131,7 +131,7 @@ flowchart TB
 
 ---
 
-🧩 Codebase Graph & Directory Structure
+##Codebase Graph & Directory Structure
 
 Specter/
 
@@ -234,7 +234,7 @@ Specter/
 
 ---
 
-🎯 Key Differentiators
+## Key Differentiators
 
 1. Evidence-Based VASP Attribution (No Overclaiming)
 
@@ -273,7 +273,7 @@ The Enhanced Graph Risk Engine (EGRE) continuously evaluates fund dynamics along
 
 
 ---
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 * **Python 3.10+**
@@ -319,7 +319,7 @@ Open http://localhost:5173 in your browser.
 
 ---
 
-🧪 Running Automated Tests
+ Running Automated Tests
 
 Run the test suite to verify multi-hop tracing, graph builders, and VASP attribution:
 # Run all backend unit and integration tests
@@ -327,7 +327,7 @@ pytest tests/ -v
 
 ---
 
-📚 Academic References
+ Academic References
 
 The heuristics, graph partitioning algorithms, and address clustering models used in SPECTER are based on peer-reviewed research:
 
@@ -340,7 +340,7 @@ The heuristics, graph partitioning algorithms, and address clustering models use
 
 ---
 
-👥 Team VeroAI (Team ID: 146040)
+ Team VeroAI (Team ID: 146040)
 
 - Smart India Hackathon 2026
 - Built with dedication to empower Indian Cyber Crime Investigators and support the vision of I4C (Indian Cybercrime Coordination Centre).
