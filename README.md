@@ -105,53 +105,101 @@ SPECTER is engineered using a modular, decoupled 5-tier architecture ensuring co
 ## 🧩 Codebase Graph & Directory Structure
 
 Specter/
+
 ├── app/
+
 │   ├── api/
+
 │   │   ├── endpoints/
+
 │   │   │   ├── cases.py               # Case file management and lifecycle
+
 │   │   │   ├── health.py              # System, DB, and blockchain provider health checks
+
 │   │   │   ├── intelligence.py        # Entity and address classification queries
+
 │   │   │   ├── investigation.py       # Async job runner & full case coordinator
+
 │   │   │   ├── patterns.py            # Financial crime typology endpoints
+
 │   │   │   ├── sahyog.py              # SAHYOG legal request & freeze package dispatch
+
 │   │   │   ├── trace.py               # Multi-hop fund traversal endpoints
+
 │   │   │   └── vasp.py                # VASP entity lookup & clustering queries
+
 │   │   └── router.py                  # Consolidated FastAPI v1 router
+
 │   ├── blockchain/
+
 │   │   ├── adapters/
+
 │   │   │   ├── base.py                # Abstract base blockchain connector
+
 │   │   │   ├── bitcoin.py             # BTC adapter (UTXO co-spend & change heuristics)
+
 │   │   │   ├── bnb.py                 # BNB Chain EVM adapter
+
 │   │   │   ├── ethereum.py            # Ethereum ERC-20 & account transfer parser
+
 │   │   │   ├── polygon.py             # Polygon POS adapter
+
 │   │   │   ├── solana.py              # Solana SPL token & account parser
+
 │   │   │   └── tron.py                # TRON TRC-20 (USDT) TronGrid adapter
+
 │   │   └── registry.py                # Dynamic adapter resolver & factory
+
 │   ├── core/
+
 │   │   ├── config.py                  # Environment settings & API keys
+
 │   │   ├── database.py                # SQLAlchemy ORM session factory
+
 │   │   └── logging.py                 # Structured forensic logging
+
 │   ├── evidence/
+
 │   │   └── builder.py                 # Cryptographic chain of custody & evidence graph
+
 │   ├── intelligence/
+
 │   │   ├── classifier.py              # Address role classification (Deposit vs Hot vs Contract)
+
 │   │   ├── cross_chain.py             # Cross-chain bridge & swap transition tracker
+
 │   │   ├── mixer.py                   # Privacy mixer (Tornado Cash, etc.) interaction detector
+
 │   │   └── risk_engine.py             # EGRE (Enhanced Graph Risk Engine)
+
 │   ├── investigation/
+
 │   │   └── orchestrator.py            # 5-stage automated investigation coordinator
+
 │   ├── models/                        # SQLAlchemy database models
+
 │   ├── reporting/
+
 │   │   └── pdf_generator.py           # Automated Section 94 CrPC / BNSS forensic report generator
+
 │   ├── sahyog/
+
 │   │   └── adapter.py                 # Standardized MHA SAHYOG payload generator
+
 │   └── main.py                        # FastAPI application entry point
+
 ├── frontend/                          # React + TypeScript Web Application
+
 │   ├── src/
+
 │   │   ├── components/                # Modular UI components (Graph, Inspector, Exports)
+
 │   │   ├── services/                  # API client & mock datasets
+
 │   │   ├── types/                     # TypeScript schema definitions
+
 │   │   └── App.tsx                    # Master investigation dashboard
+
 └── tests/                             # Comprehensive automated test suite
 
 ---
